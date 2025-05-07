@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 
 from bream._exceptions import StreamLogicalError
 from bream.core._checkpoint import SourceCheckpointer, SourcesCheckpointer
-from bream.core._definitions import Batches, Pathlike, Source, StreamStatus
+from bream.core._definitions import Batches, Pathlike, Source, StreamOptions, StreamStatus
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
@@ -76,12 +76,18 @@ class Stream:
 
     """
 
-    def __init__(self, sources: Sequence[Source], stream_path: Pathlike) -> None:
+    def __init__(
+        self,
+        sources: Sequence[Source],
+        stream_path: Pathlike,
+        stream_options: StreamOptions | None = None,
+    ) -> None:
         """Initialize stream."""
         source_names = [source.name for source in sources]
         if len(source_names) != len(set(source_names)):
             msg = "Duplicate source names detected."
             raise StreamLogicalError(msg)
+        self._options = stream_options or StreamOptions()
 
         self._sources_checkpointer = SourcesCheckpointer(
             *(SourceCheckpointer(source, stream_path) for source in sources),
@@ -93,6 +99,10 @@ class Stream:
         self._stop = False
         self._thread: Thread | None = None
         self._error: Exception | None = None
+
+    @property
+    def options(self) -> StreamOptions:
+        return self._options
 
     def _validate_definition_against_existing(self) -> None:
         existing_definition = self._definition_file.load()
@@ -136,6 +146,9 @@ class Stream:
             raise StreamLogicalError(msg)
         if not self._definition_file.exists:
             self._definition_file.save(self._definition)
+        if not self._options.repeat_failed_batch_exactly:
+            for source_checkpointer in self._sources_checkpointer:
+                source_checkpointer.unmark_uncommitted_offset()
         self._thread = Thread(target=self._main_loop, args=(func, min_batch_seconds), daemon=True)
         self._started = True
         self._thread.start()

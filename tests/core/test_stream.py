@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from bream._exceptions import StreamLogicalError
-from bream.core._definitions import Batch, Batches, BatchRequest, Source
+from bream.core._definitions import Batch, Batches, BatchRequest, Source, StreamOptions
 from bream.core._stream import Stream
 
 if TYPE_CHECKING:
@@ -43,6 +43,23 @@ def get_flaky_function_and_batches_seen_list() -> tuple[
 
     return batch_function, batches_seen
 
+
+def get_flaky_function_and_batches_seen_with_repeats_list() -> tuple[
+    Callable[[Batches], None],
+    list[Batches],
+]:
+    batches_seen: list[Batches] = []
+    call_count = 0
+
+    def batch_function(batches: Batches) -> None:
+        nonlocal batches_seen
+        nonlocal call_count
+        call_count += 1
+        batches_seen.append(batches)
+        if call_count % 2 == 0:
+            raise RuntimeError
+
+    return batch_function, batches_seen
 
 def get_slow_function_and_batches_seen_list() -> tuple[
     Callable[[Batches], None],
@@ -97,6 +114,23 @@ class SimpleDictSource(Source):
 
 
 class TestStream:
+
+    def test_default_options_are_as_expected(self, tmp_path):
+        source = SimpleDictSource("source", 13, 3)
+        stream_path = tmp_path / "stream"
+        stream = Stream([source], stream_path)
+        assert stream.options == StreamOptions(
+            repeat_failed_batch_exactly=True,
+        )
+
+    def test_options_are_respected(self, tmp_path):
+        source = SimpleDictSource("source", 13, 3)
+        stream_path = tmp_path / "stream"
+        stream = Stream([source], stream_path, StreamOptions(repeat_failed_batch_exactly=False))
+        assert stream.options == StreamOptions(
+            repeat_failed_batch_exactly=False,
+        )
+
     def test_stop_with_blocking_blocks(self, tmp_path):
         source = SimpleDictSource("source", 13, 3)
         stream_path = tmp_path / "stream"
@@ -388,3 +422,80 @@ class TestStream:
         assert batches_seen == expected_batches_seen
         stream_restarts = num_stream_starts > 1
         assert stream_restarts == expect_stream_restarts
+
+    def test_stream_repeats_failed_batch_exactly_if_configured_to(
+        self,
+        tmp_path,
+    ) -> None:
+
+        stream_path = tmp_path / "stream"
+        batch_function, batches_seen = get_flaky_function_and_batches_seen_with_repeats_list()
+
+        source = SimpleDictSource("source", 13, 2)
+        stream = Stream([source], stream_path)
+        stream.start(batch_function, 0.01)
+        stream.wait()
+
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream([source], stream_path, StreamOptions(repeat_failed_batch_exactly=True))
+        stream.start(batch_function, 0.01)
+        stream.wait()
+
+        expected_second_and_third_batch_seen = Batches(
+            batches={
+                "source": Batch(
+                    data=[
+                        {"id": 2, "data": "source_data_2"},
+                        {"id": 3, "data": "source_data_3"},
+                    ],
+                    read_to=3,
+                ),
+            },
+        )
+        assert batches_seen[1] == expected_second_and_third_batch_seen
+        assert batches_seen[2] == expected_second_and_third_batch_seen
+
+
+    def test_stream_doesnt_repeat_failed_batch_exactly_if_not_configured_to(
+        self,
+        tmp_path,
+    ) -> None:
+
+        stream_path = tmp_path / "stream"
+        batch_function, batches_seen = get_flaky_function_and_batches_seen_with_repeats_list()
+
+        source = SimpleDictSource("source", 13, 2)
+        stream = Stream([source], stream_path)
+        stream.start(batch_function, 0.01)
+        stream.wait()
+
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream([source], stream_path, StreamOptions(repeat_failed_batch_exactly=False))
+        stream.start(batch_function, 0.01)
+        stream.wait()
+
+        expected_second_batch_seen = Batches(
+            batches={
+                "source": Batch(
+                    data=[
+                        {"id": 2, "data": "source_data_2"},
+                        {"id": 3, "data": "source_data_3"},
+                    ],
+                    read_to=3,
+                ),
+            },
+        )
+        expected_third_batch_seen = Batches(
+            batches={
+                "source": Batch(
+                    data=[
+                        {"id": 2, "data": "source_data_2"},
+                        {"id": 3, "data": "source_data_3"},
+                        {"id": 4, "data": "source_data_4"},
+                    ],
+                    read_to=4,
+                ),
+            },
+        )
+        assert batches_seen[1] == expected_second_batch_seen
+        assert batches_seen[2] == expected_third_batch_seen

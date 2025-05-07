@@ -44,6 +44,11 @@ class _CheckpointMarkManager(ABC):
             f.write("")
         self._clean()
 
+    def unmark_current(self) -> None:
+        current_mark = self.current_mark
+        current_mark_path = self._path / f"{current_mark}"
+        current_mark_path.unlink()
+
     def _ensure_offset_path_exists(self) -> None:
         self._path.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +136,13 @@ class SourceCheckpointer:
             yield batch
             self._mark_commit(batch.read_to)
 
+    def unmark_uncommitted_offset(self) -> None:
+        """If there is an uncommitted offset, unmark it."""
+        uncommitted_offset = self._uncommitted_offset
+        if uncommitted_offset is None:
+            return
+        self._offset_manager.unmark_current()
+
     @property
     def _current_offset(self) -> int | None:
         return self._offset_manager.current_mark
@@ -167,3 +179,6 @@ class SourcesCheckpointer:
                     source_checkpointer.batch(),
                 )
             yield None if all(v is None for v in batches.values()) else Batches(batches)
+
+    def __iter__(self) -> Generator[SourceCheckpointer]:
+        yield from self._source_checkpointers

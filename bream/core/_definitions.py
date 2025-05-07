@@ -107,3 +107,13 @@ class StreamStatus:
     started: bool = False
     active: bool = False
     error: Exception | None = None
+
+
+@dataclass
+class StreamOptions:
+    """Options for a stream."""
+
+    repeat_failed_batch_exactly: bool = True
+    """Whether to repeat a failed batch exactly on a stream restart, regardless of
+    source configuration.
+    """

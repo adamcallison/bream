@@ -68,8 +68,8 @@ class TestSourceCheckpointer:
     @staticmethod
     def setup_checkpoint_state(
         path: Path,
-        offsets=list[int],
-        commits=list[int],
+        offsets:list[int],
+        commits:list[int],
     ) -> None:
         offset_path = path / OFFSET_MARK_NAME
         commit_path = path / COMMIT_MARK_NAME
@@ -82,6 +82,16 @@ class TestSourceCheckpointer:
         for commit in commits:
             with (commit_path / str(commit)).open("w") as f:
                 f.write("")
+
+    @staticmethod
+    def get_checkpoint_state(path: Path) -> tuple[list[int], list[int]]:
+        offsets = sorted(
+            int(p.name) for p in (path / OFFSET_MARK_NAME).glob("*")
+        )
+        commits = sorted(
+            int(p.name) for p in (path / COMMIT_MARK_NAME).glob("*")
+        )
+        return offsets, commits
 
     def test_source_name_is_source_name(self, tmp_path):
         source = MockSource("mock_source", advances_per_batch=3)
@@ -155,12 +165,7 @@ class TestSourceCheckpointer:
         source_checkpointer = SourceCheckpointer(source, tmp_path)
         with source_checkpointer.batch():
             pass
-        actual_offsets = sorted(
-            int(p.name) for p in (tmp_path / source.name / OFFSET_MARK_NAME).glob("*")
-        )
-        actual_commits = sorted(
-            int(p.name) for p in (tmp_path / source.name / COMMIT_MARK_NAME).glob("*")
-        )
+        actual_offsets, actual_commits = self.get_checkpoint_state(tmp_path / source.name)
         assert actual_offsets == expected_offsets
         assert actual_commits == expected_commits
 
@@ -191,12 +196,7 @@ class TestSourceCheckpointer:
                 raise ValueError
         except ValueError:
             pass
-        actual_offsets = sorted(
-            int(p.name) for p in (tmp_path / source.name / OFFSET_MARK_NAME).glob("*")
-        )
-        actual_commits = sorted(
-            int(p.name) for p in (tmp_path / source.name / COMMIT_MARK_NAME).glob("*")
-        )
+        actual_offsets, actual_commits = self.get_checkpoint_state(tmp_path / source.name)
         assert actual_offsets == expected_offsets
         assert actual_commits == expected_commits
 
@@ -217,14 +217,40 @@ class TestSourceCheckpointer:
         source_checkpointer = SourceCheckpointer(source, tmp_path, retain_marks=retain_marks)
         with source_checkpointer.batch():
             pass
-        actual_offsets = sorted(
-            int(p.name) for p in (tmp_path / source.name / OFFSET_MARK_NAME).glob("*")
-        )
-        actual_commits = sorted(
-            int(p.name) for p in (tmp_path / source.name / COMMIT_MARK_NAME).glob("*")
-        )
+        actual_offsets, actual_commits = self.get_checkpoint_state(tmp_path / source.name)
         expected_offsets = list(range(102, 202))[-retain_marks:]
         expected_commits = list(range(102, 202))[-retain_marks:]
+        assert actual_offsets == expected_offsets
+        assert actual_commits == expected_commits
+
+    def test_unmark_uncommitted_offset_correctly_unmarks_if_uncommitted(self, tmp_path):
+        source = MockSource("mock_source", advances_per_batch=1)
+        self.setup_checkpoint_state(
+            tmp_path / source.name,
+            list(range(20, 25)),
+            list(range(20, 24)),
+        )
+        source_checkpointer = SourceCheckpointer(source, tmp_path)
+        source_checkpointer.unmark_uncommitted_offset()
+        actual_offsets, actual_commits = self.get_checkpoint_state(tmp_path / source.name)
+        expected_offsets = list(range(20, 24))
+        expected_commits = list(range(20, 24))
+        assert actual_offsets == expected_offsets
+        assert actual_commits == expected_commits
+
+
+    def test_unmark_uncommitted_does_nothing_if_no_uncommitted(self, tmp_path):
+        source = MockSource("mock_source", advances_per_batch=1)
+        self.setup_checkpoint_state(
+            tmp_path / source.name,
+            list(range(20, 24)),
+            list(range(20, 24)),
+        )
+        source_checkpointer = SourceCheckpointer(source, tmp_path)
+        source_checkpointer.unmark_uncommitted_offset()
+        actual_offsets, actual_commits = self.get_checkpoint_state(tmp_path / source.name)
+        expected_offsets = list(range(20, 24))
+        expected_commits = list(range(20, 24))
         assert actual_offsets == expected_offsets
         assert actual_commits == expected_commits
 

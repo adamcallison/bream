@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import asdict, dataclass
+from enum import Enum, auto
 from threading import Thread
 from time import sleep, time
 from typing import TYPE_CHECKING
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
     from collections.abc import Callable, Generator, Sequence
 
 STREAM_DEFINITION_FILE_NAME = "definition"
+
+WAITHELPER_ITERATION_INTERVAL = 0.5
 
 
 @dataclass
@@ -43,24 +46,36 @@ class _StreamDefinitionFile:
             json.dump(asdict(definition), f)
 
 
-@dataclass
-class _Wait:
-    wait_seconds: float
+class _WaitHelperStates(Enum):
+    wait = auto()
+    proceed = auto()
 
 
-class _Waiter:
-    def __init__(self, seconds_between_ticks: float) -> None:
-        self._seconds_between_ticks = seconds_between_ticks
+class _WaitHelper:
+    def __init__(self, wait_seconds: float, iter_interval: float) -> None:
+        self._wait_seconds = wait_seconds
+        self._iter_interval = iter_interval
         self._tick = -float("inf")
 
-    def __call__(self) -> Generator[_Wait]:
+    def __call__(self) -> Generator[_WaitHelperStates]:
         while True:
-            time_since_tick = time() - self._tick
-            sleep_time = max(0, self._seconds_between_ticks - time_since_tick)
-            if sleep_time > 0:
+            time_ = time()
+            time_since_tick, self._tick = time() - self._tick, time_
+            remaining_wait_seconds = self._wait_seconds - time_since_tick
+            if remaining_wait_seconds <= 0:
+                sleep_time = 0.0
+                state_to_yield = _WaitHelperStates.proceed
+            elif remaining_wait_seconds <= self._iter_interval:
+                sleep_time = remaining_wait_seconds
+                state_to_yield = _WaitHelperStates.proceed
+            else:
+                sleep_time = self._iter_interval
+                state_to_yield = _WaitHelperStates.wait
+
+            if sleep_time:
                 sleep(sleep_time)
-            self._tick = time()
-            yield _Wait(sleep_time)
+
+            yield state_to_yield
 
 
 class Stream:
@@ -116,17 +131,17 @@ class Stream:
             raise StreamLogicalError(msg)
 
     def _main_loop(self, func: Callable[[Batches], None], min_batch_seconds: float) -> None:
-        waiter = _Waiter(min_batch_seconds)
+        waiter = _WaitHelper(min_batch_seconds, WAITHELPER_ITERATION_INTERVAL)
 
         try:
-            for _ in waiter():
+            for waitstate in waiter():
                 if self._stop:
                     break
+                if waitstate == _WaitHelperStates.wait:
+                    continue
                 with self._sources_checkpointer.batch() as batch:
                     if batch is not None:
                         func(batch)
-                if self._stop:
-                    break
         except Exception as e:  # noqa: BLE001
             self._error = e
 

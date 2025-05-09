@@ -1,16 +1,17 @@
 from __future__ import annotations
 
-from time import sleep
+from time import sleep, time
 from typing import TYPE_CHECKING
 
 import pytest
 
 from bream._exceptions import StreamLogicalError
 from bream.core._definitions import Batch, Batches, BatchRequest, Source, StreamOptions
-from bream.core._stream import Stream
+from bream.core._stream import WAITHELPER_ITERATION_INTERVAL, Stream
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
 
 
 def get_well_behaved_function_and_batches_seen_list() -> tuple[
@@ -115,10 +116,20 @@ class SimpleDictSource(Source):
 
 class TestStream:
 
-    def test_default_options_are_as_expected(self, tmp_path):
-        source = SimpleDictSource("source", 13, 3)
-        stream_path = tmp_path / "stream"
+    def _basic_simpledictsource_stream(
+        self,
+        stream_path: Path,
+        source_name: str,
+        num_dicts: int,
+        dicts_per_batch: int,
+    ) -> tuple[Source, Stream]:
+        source = SimpleDictSource(source_name, num_dicts, dicts_per_batch)
         stream = Stream([source], stream_path)
+        return source, stream
+
+
+    def test_default_options_are_as_expected(self, tmp_path):
+        source, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
         assert stream.options == StreamOptions(
             repeat_failed_batch_exactly=True,
         )
@@ -132,19 +143,36 @@ class TestStream:
         )
 
     def test_stop_with_blocking_blocks(self, tmp_path):
-        source = SimpleDictSource("source", 13, 3)
-        stream_path = tmp_path / "stream"
-        stream = Stream([source], stream_path)
+        source, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
         batch_function, _ = get_slow_function_and_batches_seen_list()
         stream.start(batch_function, 0.01)
         stream.stop(blocking=True)
         assert not stream.status.active
         assert stream.status.error is None
 
+    def test_start_respects_min_batch_seconds(self, tmp_path: Path) -> None:
+        source, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
+        batch_function, batches_seen = get_well_behaved_function_and_batches_seen_list()
+        stream.start(batch_function, 0.75)
+        sleep(1.15)
+        stream.stop(blocking=True)
+        expected_number_of_batches_seen = 2
+        assert len(batches_seen) == expected_number_of_batches_seen
+
+    def test_stop_stops_during_waiting(self, tmp_path):
+        source, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
+        batch_function, _ = get_well_behaved_function_and_batches_seen_list()
+        stime = time()
+        stream.start(batch_function, 4*WAITHELPER_ITERATION_INTERVAL)
+        sleep(0.1)
+        stream.stop(blocking=True)
+        etime = time()
+        assert not stream.status.active
+        assert stream.status.error is None
+        assert etime - stime < 2*WAITHELPER_ITERATION_INTERVAL
+
     def test_stop_without_blocking_does_not_block(self, tmp_path):
-        source = SimpleDictSource("source", 13, 1)
-        stream_path = tmp_path / "stream"
-        stream = Stream([source], stream_path)
+        source, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
         batch_function, _ = get_slow_function_and_batches_seen_list()
         stream.start(batch_function, 0.0)
         stream.stop(blocking=False)

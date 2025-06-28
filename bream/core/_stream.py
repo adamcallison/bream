@@ -10,20 +10,21 @@ from time import sleep, time
 from typing import TYPE_CHECKING
 
 from bream._exceptions import StreamLogicalError
-from bream.core._checkpoint import SourceCheckpointer, SourcesCheckpointer
-from bream.core._definitions import Batches, Pathlike, Source, StreamOptions, StreamStatus
+from bream.core._checkpoint import Checkpointer
+from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator, Sequence
+    from collections.abc import Callable, Generator
 
 STREAM_DEFINITION_FILE_NAME = "definition"
+CHECKPOINT_DIRECTORY_NAME = "checkpoints"
 
 WAITHELPER_ITERATION_INTERVAL = 0.5
 
 
 @dataclass
 class _StreamDefinition:
-    source_names: list[str]
+    source_name: str
 
 
 class _StreamDefinitionFile:
@@ -85,31 +86,29 @@ class Stream:
 
     Parameters
     ----------
-    sources
-        The sources of data batches that this stream will be used to process.
+    source
+        The source of data batches that this stream will be used to process.
 
     stream_path
         Path to a location this stream will use to tracks its progress.
+
+    stream_options:
+        Options to configure the stream.
 
     """
 
     def __init__(
         self,
-        sources: Sequence[Source],
+        source: Source,
         stream_path: Pathlike,
         stream_options: StreamOptions | None = None,
     ) -> None:
         """Initialize stream."""
-        source_names = [source.name for source in sources]
-        if len(source_names) != len(set(source_names)):
-            msg = "Duplicate source names detected."
-            raise StreamLogicalError(msg)
+        self._source = source
         self._options = stream_options or StreamOptions()
+        self._checkpointer = Checkpointer(source, stream_path / CHECKPOINT_DIRECTORY_NAME)
 
-        self._sources_checkpointer = SourcesCheckpointer(
-            *(SourceCheckpointer(source, stream_path) for source in sources),
-        )
-        self._definition = _StreamDefinition(source_names=[source.name for source in sources])
+        self._definition = _StreamDefinition(source_name=source.name)
         self._definition_file = _StreamDefinitionFile(stream_path / STREAM_DEFINITION_FILE_NAME)
         self._validate_definition_against_existing()
         self._started = False
@@ -132,7 +131,7 @@ class Stream:
             )
             raise StreamLogicalError(msg)
 
-    def _main_loop(self, func: Callable[[Batches], None], min_batch_seconds: float) -> None:
+    def _main_loop(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         waiter = _WaitHelper(min_batch_seconds, WAITHELPER_ITERATION_INTERVAL)
 
         try:
@@ -141,13 +140,13 @@ class Stream:
                     break
                 if waitstate == _WaitHelperStates.wait:
                     continue
-                with self._sources_checkpointer.batch() as batch:
+                with self._checkpointer.batch() as batch:
                     if batch is not None:
                         func(batch)
         except Exception as e:  # noqa: BLE001
             self._error = e
 
-    def start(self, func: Callable[[Batches], None], min_batch_seconds: float) -> None:
+    def start(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         """Start the stream in a background thread.
 
         Parameters
@@ -164,8 +163,7 @@ class Stream:
         if not self._definition_file.exists:
             self._definition_file.save(self._definition)
         if not self._options.repeat_failed_batch_exactly:
-            for source_checkpointer in self._sources_checkpointer:
-                source_checkpointer.unmark_uncommitted_offset()
+            self._checkpointer.forget_uncommitted_checkpoint()
         self._thread = Thread(target=self._main_loop, args=(func, min_batch_seconds), daemon=True)
         self._started = True
         self._thread.start()

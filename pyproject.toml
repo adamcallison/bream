@@ -3,7 +3,7 @@ name = "bream"
 version = "0.1.0"
 description = "Stream batches of data from arbitrary sources."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "cloudpathlib>=0.21.0",
     "typing-extensions>=4",
@@ -50,20 +50,26 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["ALL"]
-ignore = ["D213"]
+ignore = ["D213", "TD001", "TD002", "TD003", "FIX002"]
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["D", "ANN001", "ANN201", "ARG001", "B018", "S101", "TRY301", "FBT001", "FBT002", "PT006"]
 "bream/demo_scripts/*" = ["T201"]
 
+[tool.coverage.report]
+exclude_also = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:"
+]
+
 [dependency-groups]
 dev = [
-    "coverage==7.6.1",
     "pre-commit>=4.2.0",
     "pytest>=8.3.5",
-    "pytest-cov==5.0.0",
     "mypy==1.15.0",
     "ruff==0.11.2",
     "sphinx>=7.4.7",
     "sphinx-rtd-theme>=3.0.2",
+    "coverage>=7.10.0",
+    "pytest-cov>=6.2.1",
 ]

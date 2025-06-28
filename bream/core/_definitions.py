@@ -5,18 +5,20 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeAlias
 
 from cloudpathlib import AnyPath
-from typing_extensions import TypeAlias
+
+# TODO: make this definition more precise
+JsonableNonNull = int | float | list[Any] | dict[str, Any]
 
 
 @dataclass
 class BatchRequest:
     """A request for a batch sent to a data source."""
 
-    read_from_after: int | None
-    read_to: int | None
+    read_from_after: JsonableNonNull | None
+    read_to: JsonableNonNull | None
 
 
 @dataclass
@@ -32,25 +34,7 @@ class Batch:
     """
 
     data: Any
-    read_to: int
-
-
-@dataclass
-class Batches:
-    """A collection of batches.
-
-    Parameters
-    ----------
-    batches
-        A map of source name to batch from that source.
-
-    """
-
-    batches: dict[str, Batch | None]
-
-    def __getitem__(self, source_name: str) -> Batch | None:
-        """Get a batch by its source name."""
-        return self.batches[source_name]
+    read_to: JsonableNonNull
 
 
 class Source(ABC):
@@ -61,7 +45,7 @@ class Source(ABC):
 
     @abstractmethod
     def read(self, batch_request: BatchRequest) -> Batch | None:
-        """Read data from the source between the given offsets.
+        """Read data from the source according to the batch rquest.
 
         Bream source definitions must implement this.
 

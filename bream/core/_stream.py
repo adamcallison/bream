@@ -55,12 +55,11 @@ class _WaitHelper:
     def __init__(self, wait_seconds: float, iter_interval: float) -> None:
         self._wait_seconds = wait_seconds
         self._iter_interval = iter_interval
-        self._tick = -float("inf")
 
     def __call__(self) -> Generator[_WaitHelperStates]:
+        tick = -float("inf")
         while True:
-            time_ = time()
-            time_since_tick, self._tick = time() - self._tick, time_
+            time_since_tick = time() - tick
             remaining_wait_seconds = self._wait_seconds - time_since_tick
             if remaining_wait_seconds <= 0:
                 sleep_time = 0.0
@@ -74,6 +73,9 @@ class _WaitHelper:
 
             if sleep_time:
                 sleep(sleep_time)
+
+            if state_to_yield == _WaitHelperStates.proceed:
+                tick = time()
 
             yield state_to_yield
 

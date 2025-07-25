@@ -20,8 +20,6 @@ that contain some random positive integers, e.g::
 
 Let's set up a function and script entrypoint to do this::
 
-    from __future__ import annotations
-
     from pathlib import Path
     from random import random, randint, choices
     from sys import argv
@@ -49,7 +47,7 @@ Let's set up a function and script entrypoint to do this::
 
             # cleanup: keep only latest 250 files
             ps = sorted(testdir.glob("*"), key=(lambda p: p.stat().st_ctime))
-            for p in ps[:-250:]:
+            for p in ps[:-500:]:
                 p.unlink()
 
     if __name__ == "__main__":
@@ -73,12 +71,7 @@ To use this data source with a bream stream, we first need to define a bream :py
 for it. To do so, we inherit from :py:class:`Source <bream.core.Source>` and define the name and ``read`` method
 that loads the files and emits the numbers::
 
-    from __future__ import annotations
-
     from pathlib import Path
-    from random import random, randint, choices
-    from sys import argv
-    from time import sleep
     from contextlib import suppress
 
     from bream.core import Source, BatchRequest, Batch
@@ -148,7 +141,7 @@ that loads the files and emits the numbers::
             # get the timestamps in sorted order
             timestamps = sorted(timestamp_to_file_map)
 
-            # read from the next timestamp if a 'read_from_after' is given, otherwise start at beginning
+            # read from the next timestamp if a 'read_from_after' is given, otherwise start at beginnig
             read_from_idx = (
                 (timestamps.index(br.read_from_after) + 1) if br.read_from_after is not None else 0
             )
@@ -177,7 +170,7 @@ that loads the files and emits the numbers::
                     cleaned = [x for x in f.read().strip().split("\n") if x]
                 nums = [int(x) for x in cleaned]
                 data[path.name] = nums
-            
+
             return Batch(data=data, read_to=timestamps_of_files_to_read[-1])
 
     ...
@@ -189,20 +182,15 @@ Now we have a bream source set up, but before we configure a stream, we'll want 
 emitted by the source. So let's define a "batch function" that consumes the numbers loaded from each file and writes
 some basic stats::
 
-    from __future__ import annotations
-
     from pathlib import Path
-    from random import random, randint, choices
-    from sys import argv
-    from time import sleep
+    from random import random
     from statistics import mean, stdev
-    from contextlib import suppress
 
-    from bream.core import Source, BatchRequest, Batch, Batches
+    from bream.core import Batch
 
     ...
 
-    def write_stats(batches: Batches, output_file: Path) -> None:
+    def write_stats(batch: Batch, output_file: Path) -> None:
         """Example batch function that takes data from NumbersFromFilesByCreationTimestampSource.
         
         This will be given to the bream `Stream` object as the batch processing function and
@@ -218,7 +206,6 @@ some basic stats::
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         # get and report batch of numbers:
-        batch = list(batches.batches.values())[0] # in this example we know there is only one source
         assert batch is not None
         print(f"Seen batch: {batch}")
         nums: dict[str, list[int]] = batch.data
@@ -251,17 +238,11 @@ Setting up the stream
 
 Now we're read to set up and start the stream. Let's add a function and another entrypoint to our script::
 
-    from __future__ import annotations
-
     from pathlib import Path
-    from random import random, randint, choices
     from functools import partial
     from sys import argv
-    from time import sleep
-    from statistics import mean, stdev
-    from contextlib import suppress
 
-    from bream.core import Source, BatchRequest, Batch, Batches, Stream
+    from bream.core import Stream
 
     ...
 
@@ -285,7 +266,7 @@ Now we're read to set up and start the stream. Let's add a function and another 
 
         # define and start the stream: batch function is flaky so wrap it in a restart-loop:
         while True:
-            stream = Stream([source], stream_dir)
+            stream = Stream(source, stream_dir)
             # start stream in background thread, and don't read batches more often than 30 secs
             stream.start(batch_func, min_batch_seconds=30)
             stream.wait()  # block until stream dies
@@ -362,7 +343,7 @@ Looking in the ``<output file>`` we should see the basic stats like::
     evy33h4glw: [34, 39] -> (count=2, mean=36.5, stdev=3.5355339059327378)
     ...
 
-and looking in the ``<stream tracking dir>`` we should see the most recent ``offset`` and ``commit`` files as the stream
+and looking in the ``<stream tracking dir>`` we should see the most recent checkpoint files as the stream
 tracks its progress along the data source.
 
 
@@ -395,7 +376,7 @@ Full script
     from statistics import mean, stdev
     from contextlib import suppress
 
-    from bream.core import Source, BatchRequest, Batch, Batches, Stream
+    from bream.core import Source, BatchRequest, Batch, Stream
 
 
     def file_creation_loop(testdir: Path) -> None:
@@ -420,7 +401,7 @@ Full script
 
             # cleanup: keep only latest 250 files
             ps = sorted(testdir.glob("*"), key=(lambda p: p.stat().st_ctime))
-            for p in ps[:-250:]:
+            for p in ps[:-500:]:
                 p.unlink()
 
 
@@ -516,11 +497,11 @@ Full script
                     cleaned = [x for x in f.read().strip().split("\n") if x]
                 nums = [int(x) for x in cleaned]
                 data[path.name] = nums
-            
+
             return Batch(data=data, read_to=timestamps_of_files_to_read[-1])
         
 
-    def write_stats(batches: Batches, output_file: Path) -> None:
+    def write_stats(batch: Batch, output_file: Path) -> None:
         """Example batch function that takes data from NumbersFromFilesByCreationTimestampSource.
         
         This will be given to the bream `Stream` object as the batch processing function and
@@ -536,7 +517,6 @@ Full script
         output_file.parent.mkdir(parents=True, exist_ok=True)
 
         # get and report batch of numbers:
-        batch = list(batches.batches.values())[0] # in this example we know there is only one source
         assert batch is not None
         print(f"Seen batch: {batch}")
         nums: dict[str, list[int]] = batch.data
@@ -583,7 +563,7 @@ Full script
 
         # define and start the stream: batch function is flaky so wrap it in a restart-loop:
         while True:
-            stream = Stream([source], stream_dir)
+            stream = Stream(source, stream_dir)
             # start stream in background thread, and don't read batches more often than 30 secs
             stream.start(batch_func, min_batch_seconds=30)
             stream.wait()  # block until stream dies

@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from bream.core._definitions import JsonableNonNull, Pathlike
 
 COMMITTED = "committed"
+COMMITTED_TMP = "committed_tmp"
 UNCOMMITTED = "uncommitted"
 UNCOMMITTED_TMP = "uncommitted_tmp"
 DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
@@ -40,12 +41,14 @@ class CheckpointDirectory:
     ) -> None:
         self._path = path
         self._retain_old_committed_checkpoints = retain_old_committed_checkpoints
-        self._validate()
+        self._raise_if_unrecoverable_invalid_state()
+        self._repair_if_recoverable_invalid_state()
         self._clean_old_committed_checkpoints()
 
     def __getattribute__(self, name: str) -> Any:  # noqa: ANN401
         if name == "__init__" or not name.startswith("_"):
-            self._validate()
+            self._raise_if_unrecoverable_invalid_state()
+            self._repair_if_recoverable_invalid_state()
             self._clean_old_committed_checkpoints()
         return object.__getattribute__(self, name)
 
@@ -98,12 +101,9 @@ class CheckpointDirectory:
         uncomitted_int_to_create = max(committed_ints) + 1 if committed_ints else 0
         self._path.mkdir(parents=True, exist_ok=True)
 
-        # save as tmp and then rename for atomicity
         uncommitted_tmp_path = self._path / f"{uncomitted_int_to_create}.{UNCOMMITTED_TMP}"
         uncommitted_path = self._path / f"{uncomitted_int_to_create}.{UNCOMMITTED}"
-        with uncommitted_tmp_path.open("w") as f:
-            json.dump(data, f)
-        uncommitted_tmp_path.rename(uncommitted_path)
+        _dump_json_atomically(data, uncommitted_path, uncommitted_tmp_path)
 
     def remove_uncommitted(self) -> None:
         """Remove the uncommitted checkpoint.
@@ -127,19 +127,30 @@ class CheckpointDirectory:
             msg = "There is no uncommitted checkpoint to commit."
             raise CheckpointDirectoryInvalidOperationError(msg)
         uncommitted_path = uncommitted_paths[0]
-        uncommitted_path.rename(
-            uncommitted_path.parent / f"{uncommitted_path.stem}.{COMMITTED}",
-        )
+        uncommitted_int = int(uncommitted_path.stem)
+        with uncommitted_path.open("r") as f:
+            uncommitted_data = json.load(f)
+        committed_tmp_path = self._path / f"{uncommitted_int}.{COMMITTED_TMP}"
+        committed_path = self._path / f"{uncommitted_int}.{COMMITTED}"
+        _dump_json_atomically(uncommitted_data, committed_path, committed_tmp_path)
+        uncommitted_path.unlink()
 
-    def _validate(self) -> None:
+    def _raise_if_unrecoverable_invalid_state(self) -> None:
         committed_ints = sorted(int(p.stem) for p in self._committed_paths)
         uncommitted_ints = sorted(int(p.stem) for p in self._uncommitted_paths)
 
-        if len(self._uncommitted_paths) > 1:
+        uncommitted_ints_without_committed = set(uncommitted_ints) - set(committed_ints)
+        if len(uncommitted_ints_without_committed) > 1:
             msg = "There should be at most one uncommitted checkpoint."
             raise CheckpointDirectoryValidityError(msg)
 
-        uncommitted_int = None if not uncommitted_ints else uncommitted_ints[0]
+        uncommitted_int = (
+            None
+            if not uncommitted_ints_without_committed
+            else next(
+                iter(uncommitted_ints_without_committed),
+            )
+        )
         if not _are_consecutive(committed_ints):
             msg = "Commited checkpoints should be consecutive."
             raise CheckpointDirectoryValidityError(msg)
@@ -154,6 +165,14 @@ class CheckpointDirectory:
             )
             raise CheckpointDirectoryValidityError(msg)
 
+    def _repair_if_recoverable_invalid_state(self) -> None:
+        committed_ints = {int(p.stem) for p in self._committed_paths}
+        uncommitted_ints = {int(p.stem) for p in self._uncommitted_paths}
+        committed_ints_with_uncommitted = set(committed_ints).intersection(uncommitted_ints)
+        for i in committed_ints_with_uncommitted:
+            p = self._path / f"{i}.{UNCOMMITTED}"
+            p.unlink()
+
     def _clean_old_committed_checkpoints(self) -> None:
         sorted_committed_paths = sorted(self._committed_paths, key=lambda p: int(p.stem))
         num_delete = max(0, len(sorted_committed_paths) - self._retain_old_committed_checkpoints)
@@ -164,3 +183,9 @@ class CheckpointDirectory:
 
 def _are_consecutive(elements: Sequence) -> bool:
     return not elements or all(n == i for i, n in enumerate(elements, elements[0]))
+
+
+def _dump_json_atomically(data: JsonableNonNull, dst: Pathlike, tmp: Pathlike) -> None:
+    with tmp.open("w") as f:
+        json.dump(data, f)
+    tmp.rename(dst)

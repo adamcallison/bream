@@ -29,8 +29,9 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("special_helper_method",),
         [
-            ("_validate",),
-            ("_clean_old_committed_checkpoints",),
+            (CheckpointDirectory._raise_if_unrecoverable_invalid_state.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._repair_if_recoverable_invalid_state.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._clean_old_committed_checkpoints.__name__,),  # noqa: SLF001
         ],
     )
     def test__init__calls_special_helper_method(self, tmp_path, special_helper_method):
@@ -41,8 +42,9 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("special_helper_method",),
         [
-            ("_validate",),
-            ("_clean_old_committed_checkpoints",),
+            (CheckpointDirectory._raise_if_unrecoverable_invalid_state.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._repair_if_recoverable_invalid_state.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._clean_old_committed_checkpoints.__name__,),  # noqa: SLF001
         ],
     )
     def test_method_calls_call_special_helper_method(self, tmp_path, special_helper_method):
@@ -93,12 +95,6 @@ class TestCheckpointDirectory:
                 "or zero if there isn't one.",
             ),
             (
-                [(0, {"a_source": 0}), (1, {"a_source": 1})],
-                [(1, {"a_source": 1})],
-                "Uncommitted checkpoint must be one greater than maximum committed checkpoint, "
-                "or zero if there isn't one.",
-            ),
-            (
                 [(1, {"a_source": 1}), (2, {"a_source": 2})],
                 [(0, {"a_source": 0})],
                 "Uncommitted checkpoint must be one greater than maximum committed checkpoint, "
@@ -106,7 +102,7 @@ class TestCheckpointDirectory:
             ),
         ],
     )
-    def test_invalid_state_raises(
+    def test_unrecoverable_invalid_state_raises(
         self,
         tmp_path,
         committed_checkpoints,
@@ -123,6 +119,73 @@ class TestCheckpointDirectory:
             match=error_message,
         ):
             CheckpointDirectory(tmp_path)
+
+    @pytest.mark.parametrize(
+        (
+            "initial_committed_checkpoints",
+            "initial_uncommitted_checkpoints",
+            "expected_final_committed_checkpoints",
+            "expected_final_uncommitted_checkpoints",
+        ),
+        [
+            (
+                [(0, {"a_source": 0})],
+                [(0, {"a_source": 0})],
+                [(0, {"a_source": 0})],
+                [],
+            ),
+            (
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(0, {"a_source": 0})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [],
+            ),
+            (
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(1, {"a_source": 1})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [],
+            ),
+            (
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [],
+            ),
+            (
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(1, {"a_source": 1}), (2, {"a_source": 2})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(2, {"a_source": 2})],
+            ),
+            (
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1}), (2, {"a_source": 2})],
+                [(0, {"a_source": 0}), (1, {"a_source": 1})],
+                [(2, {"a_source": 2})],
+            ),
+        ],
+    )
+    def test_recoverable_invalid_state_is_repaired(
+        self,
+        tmp_path,
+        initial_committed_checkpoints,
+        initial_uncommitted_checkpoints,
+        expected_final_committed_checkpoints,
+        expected_final_uncommitted_checkpoints,
+    ):
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=initial_committed_checkpoints,
+            uncommitted_checkpoints=initial_uncommitted_checkpoints,
+        )
+        CheckpointDirectory(tmp_path)
+        (
+            final_committed_checkpoints,
+            final_uncommitted_checkpoints,
+        ) = get_checkpoint_directory_state(tmp_path)
+        assert final_committed_checkpoints == expected_final_committed_checkpoints
+        assert final_uncommitted_checkpoints == expected_final_uncommitted_checkpoints
 
     @pytest.mark.parametrize(
         (

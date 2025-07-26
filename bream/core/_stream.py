@@ -43,6 +43,7 @@ class _StreamDefinitionFile:
 
     def save(self, definition: _StreamDefinition) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        # TODO: make atomic
         with self._path.open("w") as f:
             json.dump(asdict(definition), f)
 

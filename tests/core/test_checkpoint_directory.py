@@ -302,21 +302,21 @@ class TestCheckpointDirectory:
         [
             (None, None, None),
             (None, [(0, {"a_source": 0})], None),
-            ([(0, {"a_source": 0})], None, Checkpoint(number=0, data={"a_source": 0})),
+            ([(0, {"a_source": 0})], None, Checkpoint(number=0, checkpoint_data={"a_source": 0})),
             (
                 [(0, {"a_source": 0})],
                 [(1, {"a_source": 1})],
-                Checkpoint(number=0, data={"a_source": 0}),
+                Checkpoint(number=0, checkpoint_data={"a_source": 0}),
             ),
             (
                 [(0, {"a_source": 0}), (1, {"a_source": 1})],
                 None,
-                Checkpoint(number=1, data={"a_source": 1}),
+                Checkpoint(number=1, checkpoint_data={"a_source": 1}),
             ),
             (
                 [(0, {"a_source": 0}), (1, {"a_source": 1})],
                 [(2, {"a_source": 2})],
-                Checkpoint(number=1, data={"a_source": 1}),
+                Checkpoint(number=1, checkpoint_data={"a_source": 1}),
             ),
         ],
     )
@@ -339,18 +339,18 @@ class TestCheckpointDirectory:
         ("committed_checkpoints", "uncommitted_checkpoints", "expected_committed_checkpoint"),
         [
             (None, None, None),
-            (None, [(0, {"a_source": 0})], Checkpoint(number=0, data={"a_source": 0})),
+            (None, [(0, {"a_source": 0})], Checkpoint(number=0, checkpoint_data={"a_source": 0})),
             ([(0, {"a_source": 0})], None, None),
             (
                 [(0, {"a_source": 0})],
                 [(1, {"a_source": 1})],
-                Checkpoint(number=1, data={"a_source": 1}),
+                Checkpoint(number=1, checkpoint_data={"a_source": 1}),
             ),
             ([(0, {"a_source": 0}), (1, {"a_source": 1})], None, None),
             (
                 [(0, {"a_source": 0}), (1, {"a_source": 1})],
                 [(2, {"a_source": 2})],
-                Checkpoint(number=2, data={"a_source": 2}),
+                Checkpoint(number=2, checkpoint_data={"a_source": 2}),
             ),
         ],
     )

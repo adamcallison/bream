@@ -28,7 +28,7 @@ class Checkpoint:
     """Data model of a checkpoint."""
 
     number: int
-    data: JsonableNonNull
+    checkpoint_data: JsonableNonNull
 
 
 class CheckpointDirectory:
@@ -72,9 +72,9 @@ class CheckpointDirectory:
             return None
         max_committed_int = max(committed_ints)
         with (self._path / f"{max_committed_int}.{COMMITTED}").open("r") as f:
-            data_: JsonableNonNull = json.load(f)
+            checkpoint_data_: JsonableNonNull = json.load(f)
 
-        return Checkpoint(number=max_committed_int, data=data_)
+        return Checkpoint(number=max_committed_int, checkpoint_data=checkpoint_data_)
 
     @property
     def uncommitted(self) -> Checkpoint | None:
@@ -84,9 +84,9 @@ class CheckpointDirectory:
             return None
         uncommitted_int = uncommitted_ints[0]
         with (self._path / f"{uncommitted_int}.{UNCOMMITTED}").open("r") as f:
-            data_: JsonableNonNull = json.load(f)
+            checkpoint_data_: JsonableNonNull = json.load(f)
 
-        return Checkpoint(number=uncommitted_int, data=data_)
+        return Checkpoint(number=uncommitted_int, checkpoint_data=checkpoint_data_)
 
     def create_uncommitted(self, data: JsonableNonNull) -> None:
         """Create an uncommitted checkpoint with the given data.

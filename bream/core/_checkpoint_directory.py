@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
@@ -16,10 +17,11 @@ if TYPE_CHECKING:
 
     from bream.core._definitions import JsonableNonNull, Pathlike
 
-COMMITTED = "committed"
-COMMITTED_TMP = "committed_tmp"
-UNCOMMITTED = "uncommitted"
-UNCOMMITTED_TMP = "uncommitted_tmp"
+STATUS = Literal["committed", "uncommitted"]
+COMMITTED: STATUS = "committed"
+COMMITTED_TMP = f"{COMMITTED}_tmp"
+UNCOMMITTED: STATUS = "uncommitted"
+UNCOMMITTED_TMP = f"{UNCOMMITTED}_tmp"
 DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
 
 
@@ -29,6 +31,57 @@ class Checkpoint:
 
     number: int
     checkpoint_data: JsonableNonNull
+    checkpoint_metadata: dict[str, JsonableNonNull]
+
+    def to_json(self, parent_path: Pathlike, *, status: STATUS) -> None:
+        """Write checkpoint to JSON file.
+
+        Args:
+            parent_path: Parent directory path where the checkpoint file will be created
+            status: used to determine file extension
+
+        """
+        parent_path.mkdir(parents=True, exist_ok=True)
+
+        filename = f"{self.number}.{status}"
+        dst_path = parent_path / filename
+        tmp_extension = {
+            UNCOMMITTED: UNCOMMITTED_TMP,
+            COMMITTED: COMMITTED_TMP,
+        }[status]
+        tmp_path = parent_path / f"{dst_path.stem}.{tmp_extension}"
+
+        data = {
+            "checkpoint_data": self.checkpoint_data,
+            "checkpoint_metadata": self.checkpoint_metadata,
+        }
+
+        _dump_json_atomically(data, dst_path, tmp_path)
+
+    @classmethod
+    def from_json(cls, file_path: Pathlike) -> Checkpoint:
+        """Create Checkpoint from JSON file.
+
+        Args:
+            file_path: Path to the checkpoint JSON file
+
+        Returns:
+            Checkpoint instance loaded from the file
+
+        """
+        number = int(file_path.stem)
+
+        with file_path.open("r") as f:
+            data = json.load(f)
+
+        return cls(
+            number=number,
+            checkpoint_data=data["checkpoint_data"],
+            checkpoint_metadata=cast(
+                "dict[str, JsonableNonNull]",
+                data["checkpoint_metadata"],
+            ),
+        )
 
 
 class CheckpointDirectory:
@@ -71,10 +124,8 @@ class CheckpointDirectory:
         if not committed_ints:
             return None
         max_committed_int = max(committed_ints)
-        with (self._path / f"{max_committed_int}.{COMMITTED}").open("r") as f:
-            checkpoint_data_: JsonableNonNull = json.load(f)
-
-        return Checkpoint(number=max_committed_int, checkpoint_data=checkpoint_data_)
+        checkpoint_path = self._path / f"{max_committed_int}.{COMMITTED}"
+        return Checkpoint.from_json(checkpoint_path)
 
     @property
     def uncommitted(self) -> Checkpoint | None:
@@ -83,12 +134,10 @@ class CheckpointDirectory:
         if not uncommitted_ints:
             return None
         uncommitted_int = uncommitted_ints[0]
-        with (self._path / f"{uncommitted_int}.{UNCOMMITTED}").open("r") as f:
-            checkpoint_data_: JsonableNonNull = json.load(f)
+        checkpoint_path = self._path / f"{uncommitted_int}.{UNCOMMITTED}"
+        return Checkpoint.from_json(checkpoint_path)
 
-        return Checkpoint(number=uncommitted_int, checkpoint_data=checkpoint_data_)
-
-    def create_uncommitted(self, data: JsonableNonNull) -> None:
+    def create_uncommitted(self, checkpoint_data: JsonableNonNull) -> None:
         """Create an uncommitted checkpoint with the given data.
 
         Raises CheckpointDirectoryInvalidOperationError is there is already one.
@@ -99,11 +148,13 @@ class CheckpointDirectory:
             raise CheckpointDirectoryInvalidOperationError(msg)
         committed_ints = [int(p.stem) for p in self._committed_paths]
         uncomitted_int_to_create = max(committed_ints) + 1 if committed_ints else 0
-        self._path.mkdir(parents=True, exist_ok=True)
 
-        uncommitted_tmp_path = self._path / f"{uncomitted_int_to_create}.{UNCOMMITTED_TMP}"
-        uncommitted_path = self._path / f"{uncomitted_int_to_create}.{UNCOMMITTED}"
-        _dump_json_atomically(data, uncommitted_path, uncommitted_tmp_path)
+        checkpoint = Checkpoint(
+            number=uncomitted_int_to_create,
+            checkpoint_data=checkpoint_data,
+            checkpoint_metadata={"created_at": datetime.now(tz=timezone.utc).timestamp()},
+        )
+        checkpoint.to_json(self._path, status=UNCOMMITTED)
 
     def remove_uncommitted(self) -> None:
         """Remove the uncommitted checkpoint.
@@ -127,12 +178,11 @@ class CheckpointDirectory:
             msg = "There is no uncommitted checkpoint to commit."
             raise CheckpointDirectoryInvalidOperationError(msg)
         uncommitted_path = uncommitted_paths[0]
-        uncommitted_int = int(uncommitted_path.stem)
-        with uncommitted_path.open("r") as f:
-            uncommitted_data = json.load(f)
-        committed_tmp_path = self._path / f"{uncommitted_int}.{COMMITTED_TMP}"
-        committed_path = self._path / f"{uncommitted_int}.{COMMITTED}"
-        _dump_json_atomically(uncommitted_data, committed_path, committed_tmp_path)
+
+        uncommitted_checkpoint = Checkpoint.from_json(uncommitted_path)
+
+        uncommitted_checkpoint.to_json(self._path, status=COMMITTED)
+
         uncommitted_path.unlink()
 
     def _raise_if_unrecoverable_invalid_state(self) -> None:

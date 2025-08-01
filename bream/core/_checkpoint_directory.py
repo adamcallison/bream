@@ -31,7 +31,7 @@ class Checkpoint:
 
     number: int
     checkpoint_data: JsonableNonNull
-    checkpoint_metadata: dict[str, JsonableNonNull]
+    checkpoint_metadata: dict[str, JsonableNonNull | None]
 
     def to_json(self, parent_path: Pathlike, *, status: STATUS) -> None:
         """Write checkpoint to JSON file.
@@ -78,7 +78,7 @@ class Checkpoint:
             number=number,
             checkpoint_data=data["checkpoint_data"],
             checkpoint_metadata=cast(
-                "dict[str, JsonableNonNull]",
+                "dict[str, JsonableNonNull | None]",
                 data["checkpoint_metadata"],
             ),
         )
@@ -152,7 +152,10 @@ class CheckpointDirectory:
         checkpoint = Checkpoint(
             number=uncomitted_int_to_create,
             checkpoint_data=checkpoint_data,
-            checkpoint_metadata={"created_at": datetime.now(tz=timezone.utc).timestamp()},
+            checkpoint_metadata={
+                "created_at": datetime.now(tz=timezone.utc).timestamp(),
+                "committed_at": None,
+            },
         )
         checkpoint.to_json(self._path, status=UNCOMMITTED)
 

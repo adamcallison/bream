@@ -14,7 +14,10 @@ if TYPE_CHECKING:
 
 _DEFAULT_CREATED_AT_TIMESTAMP = 1753600000.0
 
-_DEFAULT_METADATA: dict[str, JsonableNonNull] = {"created_at": _DEFAULT_CREATED_AT_TIMESTAMP}
+_DEFAULT_METADATA: dict[str, JsonableNonNull | None] = {
+    "created_at": _DEFAULT_CREATED_AT_TIMESTAMP,
+    "committed_at": None,
+}
 
 
 @contextlib.contextmanager
@@ -29,7 +32,7 @@ def freeze_default_time():
 def make_checkpoint(
     number: int,
     checkpoint_data: JsonableNonNull,
-    checkpoint_metadata: dict[str, JsonableNonNull] | None = None,
+    checkpoint_metadata: dict[str, JsonableNonNull | None] | None = None,
 ) -> Checkpoint:
     return Checkpoint(
         number=number,

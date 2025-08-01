@@ -13,15 +13,21 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 _DEFAULT_CREATED_AT_TIMESTAMP = 1753600000.0
+_DEFAULT_COMMITTED_AT_TIMESTAMP = 1753600010.0
 
 _DEFAULT_METADATA: dict[str, JsonableNonNull | None] = {
     "created_at": _DEFAULT_CREATED_AT_TIMESTAMP,
     "committed_at": None,
 }
 
+_DEFAULT_COMMITTED_METADATA: dict[str, JsonableNonNull | None] = {
+    "created_at": _DEFAULT_CREATED_AT_TIMESTAMP,
+    "committed_at": _DEFAULT_COMMITTED_AT_TIMESTAMP,
+}
+
 
 @contextlib.contextmanager
-def freeze_default_time():
+def freeze_default_created_at_time():
     """Context manager that freezes time to the default created_at timestamp."""
     with freeze_time(
         datetime.fromtimestamp(_DEFAULT_CREATED_AT_TIMESTAMP, tz=timezone.utc),
@@ -29,17 +35,36 @@ def freeze_default_time():
         yield
 
 
-def make_checkpoint(
-    number: int,
-    checkpoint_data: JsonableNonNull,
-    checkpoint_metadata: dict[str, JsonableNonNull | None] | None = None,
-) -> Checkpoint:
+@contextlib.contextmanager
+def freeze_default_committed_at_time():
+    """Context manager that freezes time to the default created_at timestamp."""
+    with freeze_time(
+        datetime.fromtimestamp(_DEFAULT_COMMITTED_AT_TIMESTAMP, tz=timezone.utc),
+    ):
+        yield
+
+
+@contextlib.contextmanager
+def freeze_default_times_with_ticking():
+    start = datetime.fromtimestamp(_DEFAULT_CREATED_AT_TIMESTAMP, tz=timezone.utc)
+    delta = _DEFAULT_COMMITTED_AT_TIMESTAMP - _DEFAULT_CREATED_AT_TIMESTAMP
+    with freeze_time(start, auto_tick_seconds=delta):
+        yield
+
+
+def make_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
     return Checkpoint(
         number=number,
         checkpoint_data=checkpoint_data,
-        checkpoint_metadata=(
-            checkpoint_metadata if checkpoint_metadata is not None else _DEFAULT_METADATA
-        ),
+        checkpoint_metadata=_DEFAULT_METADATA,
+    )
+
+
+def make_committed_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
+    return Checkpoint(
+        number=number,
+        checkpoint_data=checkpoint_data,
+        checkpoint_metadata=_DEFAULT_COMMITTED_METADATA,
     )
 
 

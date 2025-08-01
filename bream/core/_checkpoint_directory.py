@@ -184,6 +184,10 @@ class CheckpointDirectory:
 
         uncommitted_checkpoint = Checkpoint.from_json(uncommitted_path)
 
+        uncommitted_checkpoint.checkpoint_metadata["committed_at"] = datetime.now(
+            tz=timezone.utc,
+        ).timestamp()
+
         uncommitted_checkpoint.to_json(self._path, status=COMMITTED)
 
         uncommitted_path.unlink()

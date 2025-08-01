@@ -1,20 +1,79 @@
 from __future__ import annotations
 
-import json
+import contextlib
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
-from bream.core._checkpoint_directory import COMMITTED, UNCOMMITTED
+from freezegun import freeze_time
+
+from bream.core._checkpoint_directory import COMMITTED, UNCOMMITTED, Checkpoint, CheckpointMetadata
 from bream.core._definitions import Batch, BatchRequest, JsonableNonNull, Source
 
 if TYPE_CHECKING:
     from pathlib import Path
 
+_DEFAULT_CREATED_AT_TIMESTAMP = 1753600000.0
+_DEFAULT_COMMITTED_AT_TIMESTAMP = 1753600010.0
+
+_DEFAULT_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=None,
+)
+
+
+_DEFAULT_COMMITTED_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=_DEFAULT_COMMITTED_AT_TIMESTAMP,
+)
+
+
+@contextlib.contextmanager
+def freeze_default_created_at_time():
+    """Context manager that freezes time to the default created_at timestamp."""
+    with freeze_time(
+        datetime.fromtimestamp(_DEFAULT_CREATED_AT_TIMESTAMP, tz=timezone.utc),
+    ):
+        yield
+
+
+@contextlib.contextmanager
+def freeze_default_committed_at_time():
+    """Context manager that freezes time to the default created_at timestamp."""
+    with freeze_time(
+        datetime.fromtimestamp(_DEFAULT_COMMITTED_AT_TIMESTAMP, tz=timezone.utc),
+    ):
+        yield
+
+
+@contextlib.contextmanager
+def freeze_default_times_with_ticking():
+    start = datetime.fromtimestamp(_DEFAULT_CREATED_AT_TIMESTAMP, tz=timezone.utc)
+    delta = _DEFAULT_COMMITTED_AT_TIMESTAMP - _DEFAULT_CREATED_AT_TIMESTAMP
+    with freeze_time(start, auto_tick_seconds=delta):
+        yield
+
+
+def make_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
+    return Checkpoint(
+        number=number,
+        checkpoint_data=checkpoint_data,
+        checkpoint_metadata=_DEFAULT_METADATA,
+    )
+
+
+def make_committed_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
+    return Checkpoint(
+        number=number,
+        checkpoint_data=checkpoint_data,
+        checkpoint_metadata=_DEFAULT_COMMITTED_METADATA,
+    )
+
 
 def setup_checkpoint_directory(
     checkpoint_dir: Path,
     *,
-    committed_checkpoints: list[tuple[int, JsonableNonNull]] | None = None,
-    uncommitted_checkpoints: list[tuple[int, JsonableNonNull]] | None = None,
+    committed_checkpoints: list[Checkpoint] | None = None,
+    uncommitted_checkpoints: list[Checkpoint] | None = None,
 ) -> None:
     """
     Helper function to set up a checkpoint directory in an arbitrary state.
@@ -27,23 +86,18 @@ def setup_checkpoint_directory(
     """
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
-    for checkpoints, extension in [
+    for checkpoints, status in [
         (committed_checkpoints, COMMITTED),
         (uncommitted_checkpoints, UNCOMMITTED),
     ]:
         if checkpoints:
-            for number, data in checkpoints:
-                checkpoint_file = checkpoint_dir / f"{number}.{extension}"
-                with checkpoint_file.open("w") as f:
-                    json.dump(data, f)
+            for checkpoint in checkpoints:
+                checkpoint.to_json(checkpoint_dir, status=status)
 
 
 def get_checkpoint_directory_state(
     checkpoint_dir: Path,
-) -> tuple[
-    list[tuple[int, JsonableNonNull]],
-    list[tuple[int, JsonableNonNull]],
-]:
+) -> tuple[list[Checkpoint], list[Checkpoint]]:
     """
     Helper function to get the state of a checkpoint directory.
 
@@ -54,16 +108,19 @@ def get_checkpoint_directory_state(
         committed_checkpoints: List of tuples (number, data) for committed checkpoints
         uncommitted_checkpoints: List of tuples (number, data) for uncommitted checkpoints
     """
-    fetched_tuples: dict[str, list[tuple[int, JsonableNonNull]]] = {}
+    fetched_checkpoints: dict[str, list[Checkpoint]] = {}
     for extension in [COMMITTED, UNCOMMITTED]:
         paths = checkpoint_dir.glob(f"*.{extension}")
-        fetched_tuples_: list[tuple[int, JsonableNonNull]] = []
+        fetched_checkpoints_: list[Checkpoint] = []
         for p in paths:
-            with p.open("r") as f:
-                fetched_tuples_.append((int(p.stem), json.load(f)))
-        fetched_tuples[extension] = fetched_tuples_
-    sk = lambda x: x[0]  # noqa: E731
-    return sorted(fetched_tuples[COMMITTED], key=sk), sorted(fetched_tuples[UNCOMMITTED], key=sk)
+            checkpoint = Checkpoint.from_json(p)
+            fetched_checkpoints_.append(checkpoint)
+        fetched_checkpoints[extension] = fetched_checkpoints_
+    sk = lambda x: x.number  # noqa: E731
+    return (
+        sorted(fetched_checkpoints[COMMITTED], key=sk),
+        sorted(fetched_checkpoints[UNCOMMITTED], key=sk),
+    )
 
 
 class MockSource(Source):

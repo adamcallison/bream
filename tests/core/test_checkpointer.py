@@ -4,14 +4,19 @@ from contextlib import suppress
 
 import pytest
 
-from bream.core._checkpoint import (
+from bream.core._checkpointer import (
     CheckpointDirectory,
     Checkpointer,
 )
 from bream.core._definitions import Batch
 from tests.core.helpers import (
     MockSource,
+    freeze_default_committed_at_time,
+    freeze_default_created_at_time,
+    freeze_default_times_with_ticking,
     get_checkpoint_directory_state,
+    make_checkpoint,
+    make_committed_checkpoint,
     setup_checkpoint_directory,
 )
 
@@ -21,7 +26,7 @@ class TestCheckpointer:
         ("initial_committed", "initial_uncommitted", "expected_batch"),
         [
             (
-                [(0, 5), (1, 10)],
+                [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
                 None,
                 Batch(
                     data="data_from: BatchRequest(read_from_after=10, read_to=None)",
@@ -29,8 +34,8 @@ class TestCheckpointer:
                 ),
             ),
             (
-                [(0, 5), (1, 10)],
-                (2, 18),
+                [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
+                make_checkpoint(2, 18),
                 Batch(
                     data="data_from: BatchRequest(read_from_after=10, read_to=18)",
                     read_to=18,
@@ -58,7 +63,13 @@ class TestCheckpointer:
 
     def test_batch_is_null_if_source_empty(self, tmp_path):
         source = MockSource("a_source", advances_per_batch=3, empty=True)
-        setup_checkpoint_directory(tmp_path, committed_checkpoints=[(0, 5), (1, 10)])
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+        )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
         with checkpointer.batch() as batch:
             pass
@@ -69,69 +80,122 @@ class TestCheckpointer:
         tmp_path,
     ):
         source = MockSource("a_source", advances_per_batch=3)
-        setup_checkpoint_directory(tmp_path, committed_checkpoints=[(0, 5), (1, 10)])
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+        )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
-        with checkpointer.batch():
+        with freeze_default_times_with_ticking(), checkpointer.batch():
             pass
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10), (2, 13)], [])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+                make_committed_checkpoint(2, 13),
+            ],
+            [],
+        )
 
     def test_unsuccessful_batch_creates_new_uncommitted_checkpoint_if_no_uncommitted_exists(
         self,
         tmp_path,
     ):
         source = MockSource("a_source", advances_per_batch=3)
-        setup_checkpoint_directory(tmp_path, committed_checkpoints=[(0, 5), (1, 10)])
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+        )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
-        with suppress(ValueError), checkpointer.batch():
+        with freeze_default_created_at_time(), suppress(ValueError), checkpointer.batch():
             raise ValueError
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10)], [(2, 13)])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
+            [make_checkpoint(2, 13)],
+        )
 
     def test_successful_batch_commits_if_uncommitted_exists(self, tmp_path):
         source = MockSource("a_source", advances_per_batch=3)
         setup_checkpoint_directory(
             tmp_path,
-            committed_checkpoints=[(0, 5), (1, 10)],
-            uncommitted_checkpoints=[(2, 18)],
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+            uncommitted_checkpoints=[make_checkpoint(2, 18)],
         )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
-        with checkpointer.batch():
+        with freeze_default_committed_at_time(), checkpointer.batch():
             pass
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10), (2, 18)], [])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+                make_committed_checkpoint(2, 18),
+            ],
+            [],
+        )
 
     def test_unsuccessful_doesnt_commit_if_uncommitted_exists(self, tmp_path):
         source = MockSource("a_source", advances_per_batch=3)
         setup_checkpoint_directory(
             tmp_path,
-            committed_checkpoints=[(0, 5), (1, 10)],
-            uncommitted_checkpoints=[(2, 18)],
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+            uncommitted_checkpoints=[make_checkpoint(2, 18)],
         )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
         with suppress(ValueError), checkpointer.batch():
             raise ValueError
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10)], [(2, 18)])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
+            [make_checkpoint(2, 18)],
+        )
 
     def test_forget_uncommitted_checkpoint_works_if_uncommitted_exists(self, tmp_path):
         source = MockSource("a_source", advances_per_batch=3)
         setup_checkpoint_directory(
             tmp_path,
-            committed_checkpoints=[(0, 5), (1, 10)],
-            uncommitted_checkpoints=[(2, 18)],
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+            uncommitted_checkpoints=[make_checkpoint(2, 18)],
         )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
 
         checkpointer.forget_uncommitted_checkpoint()
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10)], [])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
+            [],
+        )
 
     def test_forget_uncommitted_checkpoint_does_nothing_if_uncommitted_doesnt_exist(self, tmp_path):
         source = MockSource("a_source", advances_per_batch=3)
-        setup_checkpoint_directory(tmp_path, committed_checkpoints=[(0, 5), (1, 10)])
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[
+                make_committed_checkpoint(0, 5),
+                make_committed_checkpoint(1, 10),
+            ],
+        )
         checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
 
         checkpointer.forget_uncommitted_checkpoint()
 
-        assert get_checkpoint_directory_state(tmp_path) == ([(0, 5), (1, 10)], [])
+        assert get_checkpoint_directory_state(tmp_path) == (
+            [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
+            [],
+        )

@@ -61,8 +61,10 @@ class Checkpointer:
         latest_committed_checkpoint = self._checkpoint_directory.max_committed
         uncommitted_checkpoint = self._checkpoint_directory.uncommitted
 
-        read_from_after = latest_committed_checkpoint.data if latest_committed_checkpoint else None
-        read_to = uncommitted_checkpoint.data if uncommitted_checkpoint else None
+        read_from_after = (
+            latest_committed_checkpoint.checkpoint_data if latest_committed_checkpoint else None
+        )
+        read_to = uncommitted_checkpoint.checkpoint_data if uncommitted_checkpoint else None
         batch_request = BatchRequest(read_from_after=read_from_after, read_to=read_to)
         maybe_batch = self._read_source(batch_request)
 

@@ -10,7 +10,7 @@ from time import sleep, time
 from typing import TYPE_CHECKING
 
 from bream._exceptions import StreamLogicalError
-from bream.core._checkpoint import Checkpointer
+from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
 
 if TYPE_CHECKING:
@@ -22,7 +22,7 @@ CHECKPOINT_DIRECTORY_NAME = "checkpoints"
 WAITHELPER_ITERATION_INTERVAL = 0.5
 
 
-@dataclass
+@dataclass(frozen=True)
 class _StreamDefinition:
     source_name: str
 
@@ -43,6 +43,7 @@ class _StreamDefinitionFile:
 
     def save(self, definition: _StreamDefinition) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
+        # TODO: make atomic
         with self._path.open("w") as f:
             json.dump(asdict(definition), f)
 

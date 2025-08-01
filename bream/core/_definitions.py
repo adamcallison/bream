@@ -13,7 +13,7 @@ from cloudpathlib import AnyPath
 JsonableNonNull = int | float | list[Any] | dict[str, Any]
 
 
-@dataclass
+@dataclass(frozen=True)
 class BatchRequest:
     """A request for a batch sent to a data source."""
 
@@ -21,7 +21,7 @@ class BatchRequest:
     read_to: JsonableNonNull | None
 
 
-@dataclass
+@dataclass(frozen=True)
 class Batch:
     """A batch returned by a data source.
 
@@ -73,7 +73,7 @@ class _AnyPathTypingWrapper(Path, ABC):
 Pathlike: TypeAlias = "Path | _AnyPathTypingWrapper"
 
 
-@dataclass
+@dataclass(frozen=True)
 class StreamStatus:
     """Status information of a stream.
 
@@ -93,7 +93,7 @@ class StreamStatus:
     error: Exception | None = None
 
 
-@dataclass
+@dataclass(frozen=True)
 class StreamOptions:
     """Options for a stream."""
 

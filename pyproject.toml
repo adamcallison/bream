@@ -72,4 +72,5 @@ dev = [
     "sphinx-rtd-theme>=3.0.2",
     "coverage>=7.10.0",
     "pytest-cov>=6.2.1",
+    "freezegun>=1.5.3",
 ]

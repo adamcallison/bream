@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from freezegun import freeze_time
 
-from bream.core._checkpoint_directory import COMMITTED, UNCOMMITTED, Checkpoint
+from bream.core._checkpoint_directory import COMMITTED, UNCOMMITTED, Checkpoint, CheckpointMetadata
 from bream.core._definitions import Batch, BatchRequest, JsonableNonNull, Source
 
 if TYPE_CHECKING:
@@ -15,15 +15,16 @@ if TYPE_CHECKING:
 _DEFAULT_CREATED_AT_TIMESTAMP = 1753600000.0
 _DEFAULT_COMMITTED_AT_TIMESTAMP = 1753600010.0
 
-_DEFAULT_METADATA: dict[str, JsonableNonNull | None] = {
-    "created_at": _DEFAULT_CREATED_AT_TIMESTAMP,
-    "committed_at": None,
-}
+_DEFAULT_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=None,
+)
 
-_DEFAULT_COMMITTED_METADATA: dict[str, JsonableNonNull | None] = {
-    "created_at": _DEFAULT_CREATED_AT_TIMESTAMP,
-    "committed_at": _DEFAULT_COMMITTED_AT_TIMESTAMP,
-}
+
+_DEFAULT_COMMITTED_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=_DEFAULT_COMMITTED_AT_TIMESTAMP,
+)
 
 
 @contextlib.contextmanager

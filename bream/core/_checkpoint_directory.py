@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 
     from bream.core._definitions import JsonableNonNull, Pathlike
 
+# TODO: use enums
 STATUS = Literal["committed", "uncommitted"]
 COMMITTED: STATUS = "committed"
 COMMITTED_TMP = f"{COMMITTED}_tmp"
@@ -25,13 +26,19 @@ UNCOMMITTED_TMP = f"{UNCOMMITTED}_tmp"
 DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
 
 
-@dataclass
+@dataclass(frozen=True)
+class CheckpointMetadata:
+    created_at: float
+    committed_at: float | None
+
+
+@dataclass(frozen=True)
 class Checkpoint:
     """Data model of a checkpoint."""
 
     number: int
     checkpoint_data: JsonableNonNull
-    checkpoint_metadata: dict[str, JsonableNonNull | None]
+    checkpoint_metadata: CheckpointMetadata
 
     def to_json(self, parent_path: Pathlike, *, status: STATUS) -> None:
         """Write checkpoint to JSON file.
@@ -53,7 +60,7 @@ class Checkpoint:
 
         data = {
             "checkpoint_data": self.checkpoint_data,
-            "checkpoint_metadata": self.checkpoint_metadata,
+            "checkpoint_metadata": asdict(self.checkpoint_metadata),
         }
 
         _dump_json_atomically(data, dst_path, tmp_path)
@@ -77,9 +84,9 @@ class Checkpoint:
         return cls(
             number=number,
             checkpoint_data=data["checkpoint_data"],
-            checkpoint_metadata=cast(
-                "dict[str, JsonableNonNull | None]",
-                data["checkpoint_metadata"],
+            checkpoint_metadata=CheckpointMetadata(
+                created_at=data["checkpoint_metadata"]["created_at"],
+                committed_at=data["checkpoint_metadata"]["committed_at"],
             ),
         )
 
@@ -152,10 +159,10 @@ class CheckpointDirectory:
         checkpoint = Checkpoint(
             number=uncomitted_int_to_create,
             checkpoint_data=checkpoint_data,
-            checkpoint_metadata={
-                "created_at": datetime.now(tz=timezone.utc).timestamp(),
-                "committed_at": None,
-            },
+            checkpoint_metadata=CheckpointMetadata(
+                created_at=datetime.now(tz=timezone.utc).timestamp(),
+                committed_at=None,
+            ),
         )
         checkpoint.to_json(self._path, status=UNCOMMITTED)
 
@@ -184,11 +191,15 @@ class CheckpointDirectory:
 
         uncommitted_checkpoint = Checkpoint.from_json(uncommitted_path)
 
-        uncommitted_checkpoint.checkpoint_metadata["committed_at"] = datetime.now(
-            tz=timezone.utc,
-        ).timestamp()
+        committed_checkpoint = replace(
+            uncommitted_checkpoint,
+            checkpoint_metadata=replace(
+                uncommitted_checkpoint.checkpoint_metadata,
+                committed_at=datetime.now(tz=timezone.utc).timestamp(),
+            ),
+        )
 
-        uncommitted_checkpoint.to_json(self._path, status=COMMITTED)
+        committed_checkpoint.to_json(self._path, status=COMMITTED)
 
         uncommitted_path.unlink()
 

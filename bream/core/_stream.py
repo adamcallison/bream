@@ -22,7 +22,7 @@ CHECKPOINT_DIRECTORY_NAME = "checkpoints"
 WAITHELPER_ITERATION_INTERVAL = 0.5
 
 
-@dataclass
+@dataclass(frozen=True)
 class _StreamDefinition:
     source_name: str
 

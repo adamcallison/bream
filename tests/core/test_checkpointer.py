@@ -4,7 +4,7 @@ from contextlib import suppress
 
 import pytest
 
-from bream.core._checkpoint import (
+from bream.core._checkpointer import (
     CheckpointDirectory,
     Checkpointer,
 )

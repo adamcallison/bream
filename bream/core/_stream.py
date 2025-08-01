@@ -10,7 +10,7 @@ from time import sleep, time
 from typing import TYPE_CHECKING
 
 from bream._exceptions import StreamLogicalError
-from bream.core._checkpoint import Checkpointer
+from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
 
 if TYPE_CHECKING:

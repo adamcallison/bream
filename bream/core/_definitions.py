@@ -9,8 +9,8 @@ from typing import Any, TypeAlias
 
 from cloudpathlib import AnyPath
 
-# TODO: make this definition more precise
-JsonableNonNull = int | float | list[Any] | dict[str, Any]
+JsonableNonNull = int | float | list["Jsonable"] | dict[str, "Jsonable"]
+Jsonable = JsonableNonNull | None
 
 
 @dataclass(frozen=True)

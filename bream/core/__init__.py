@@ -3,6 +3,7 @@
 from bream.core._definitions import (
     Batch,
     BatchRequest,
+    Jsonable,
     JsonableNonNull,
     Pathlike,
     Source,
@@ -19,9 +20,13 @@ Pathlike = Pathlike  # noqa: PLW0127
 JsonableNonNull = JsonableNonNull  # noqa: PLW0127
 """An object that can be turned into a non-null json blob."""
 
+Jsonable = Jsonable  # noqa: PLW0127
+"""An object that can be turned into a json blob."""
+
 __all__ = [
     "Batch",
     "BatchRequest",
+    "Jsonable",
     "JsonableNonNull",
     "Pathlike",
     "Source",

@@ -62,7 +62,7 @@ class Checkpoint:
         tmp_extension = f"{status}{self._TMP_FILE_SUFFIX}"
         tmp_path = parent_path / f"{dst_path.stem}.{tmp_extension}"
 
-        data = {
+        data: JsonableNonNull = {
             "checkpoint_data": self.checkpoint_data,
             "checkpoint_metadata": asdict(self.checkpoint_metadata),
         }

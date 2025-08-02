@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from time import sleep, time
 from typing import TYPE_CHECKING
 
@@ -8,7 +9,7 @@ import pytest
 from bream._exceptions import StreamLogicalError
 from bream.core._definitions import Batch, BatchRequest, Source, StreamOptions
 from bream.core._source_collection import SourceCollection
-from bream.core._stream import WAITHELPER_ITERATION_INTERVAL, Stream
+from bream.core._stream import STREAM_DEFINITION_FILE_NAME, WAITHELPER_ITERATION_INTERVAL, Stream
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -133,6 +134,52 @@ class TestStream:
         assert stream.options == StreamOptions(
             repeat_failed_batch_exactly=True,
         )
+
+    def test_stream_definition_file_created_on_start(self, tmp_path):
+        source = SimpleDictSource("test_source", 5, 2)
+        stream_path = tmp_path / "stream"
+        definition_file_path = stream_path / STREAM_DEFINITION_FILE_NAME
+
+        assert not definition_file_path.exists()
+
+        stream = Stream(source, stream_path)
+        batch_function, _ = get_well_behaved_function_and_batches_seen_list()
+        stream.start(batch_function, 0.01)
+        stream.stop(blocking=True)
+
+        assert definition_file_path.exists()
+        with definition_file_path.open("r") as f:
+            definition_data = json.load(f)
+            assert definition_data == {"source_name": "test_source"}
+
+    def test_stream_definition_passes_validation_when_same_across_restarts(self, tmp_path):
+        source = SimpleDictSource("test_source", 5, 2)
+        stream_path = tmp_path / "stream"
+        definition_file_path = stream_path / STREAM_DEFINITION_FILE_NAME
+
+        stream1 = Stream(source, stream_path)
+        batch_function, _ = get_well_behaved_function_and_batches_seen_list()
+        stream1.start(batch_function, 0.01)
+        stream1.stop(blocking=True)
+
+        assert definition_file_path.exists()
+
+        stream2 = Stream(source, stream_path)
+        stream2.start(batch_function, 0.01)
+        stream2.stop(blocking=True)
+
+    def test_stream_definition_fails_validation_when_different_across_restarts(self, tmp_path):
+        source1 = SimpleDictSource("original_source", 5, 2)
+        source2 = SimpleDictSource("different_source", 5, 2)
+        stream_path = tmp_path / "stream"
+
+        stream1 = Stream(source1, stream_path)
+        batch_function, _ = get_well_behaved_function_and_batches_seen_list()
+        stream1.start(batch_function, 0.01)
+        stream1.stop(blocking=True)
+
+        with pytest.raises(StreamLogicalError, match="Attempted redefinition of stream"):
+            Stream(source2, stream_path)
 
     def test_options_are_respected(self, tmp_path):
         source = SimpleDictSource("source", 13, 3)
@@ -320,7 +367,6 @@ class TestStream:
         self,
         tmp_path,
     ) -> None:
-        # TODO: this is a very "integrationy" test. does it belong here?
         stream_path = tmp_path / "stream"
         batch_function, batches_seen = get_flaky_function_and_batches_seen_with_repeats_list()
 
@@ -365,6 +411,7 @@ class TestStream:
         batch_function_factory,
         expect_stream_restarts,
     ) -> None:
+        # TODO: this is a very "integrationy" test. does it belong here?
         source1 = SimpleDictSource("source1", 13, 3)
         source2 = SimpleDictSource("source2", 5, 2)
         stream_path = tmp_path / "stream"

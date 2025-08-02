@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from bream._exceptions import StreamLogicalError
 from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
+from bream.core._utils import dump_json_atomically
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Generator
@@ -28,6 +29,8 @@ class _StreamDefinition:
 
 
 class _StreamDefinitionFile:
+    _TMP_FILE_SUFFIX = "_tmp"
+
     def __init__(self, path: Pathlike) -> None:
         self._path = path
 
@@ -43,9 +46,9 @@ class _StreamDefinitionFile:
 
     def save(self, definition: _StreamDefinition) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        # TODO: make atomic
-        with self._path.open("w") as f:
-            json.dump(asdict(definition), f)
+        dst_file = self._path
+        tmp_file = dst_file.parent / f"{dst_file.name}{self._TMP_FILE_SUFFIX}"
+        dump_json_atomically(asdict(definition), dst_file, tmp_file)
 
 
 class _WaitHelperStates(Enum):

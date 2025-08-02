@@ -11,6 +11,7 @@ from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
     CheckpointDirectoryValidityError,
 )
+from bream.core._utils import dump_json_atomically
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -63,7 +64,7 @@ class Checkpoint:
             "checkpoint_metadata": asdict(self.checkpoint_metadata),
         }
 
-        _dump_json_atomically(data, dst_path, tmp_path)
+        dump_json_atomically(data, dst_path, tmp_path)
 
     @classmethod
     def from_json(cls, file_path: Pathlike) -> Checkpoint:
@@ -251,9 +252,3 @@ class CheckpointDirectory:
 
 def _are_consecutive(elements: Sequence) -> bool:
     return not elements or all(n == i for i, n in enumerate(elements, elements[0]))
-
-
-def _dump_json_atomically(data: JsonableNonNull, dst: Pathlike, tmp: Pathlike) -> None:
-    with tmp.open("w") as f:
-        json.dump(data, f)
-    tmp.rename(dst)

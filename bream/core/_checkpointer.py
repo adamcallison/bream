@@ -12,10 +12,6 @@ from bream.core._definitions import Batch, BatchRequest, Pathlike, Source
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-COMMITTED = "committed"
-UNCOMMITTED = "uncommitted"
-DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
-
 
 class Checkpointer:
     """Manage checkpoints for a stream's progress through a data source."""

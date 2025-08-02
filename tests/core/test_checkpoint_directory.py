@@ -10,10 +10,9 @@ from bream._exceptions import (
     CheckpointDirectoryValidityError,
 )
 from bream.core._checkpoint_directory import (
-    COMMITTED,
-    UNCOMMITTED,
     Checkpoint,
     CheckpointDirectory,
+    CheckpointStatus,
 )
 from tests.core.helpers import (
     freeze_default_committed_at_time,
@@ -700,8 +699,8 @@ class TestCheckpoint:
     @pytest.mark.parametrize(
         ("status",),
         [
-            (COMMITTED,),
-            (UNCOMMITTED,),
+            (CheckpointStatus.COMMITTED,),
+            (CheckpointStatus.UNCOMMITTED,),
         ],
     )
     def test_to_json_creates_correct_file(self, tmp_path, status):
@@ -716,19 +715,23 @@ class TestCheckpoint:
         )
 
         assert committed_checkpoints == (
-            [make_checkpoint(5, {"source1": 100, "source2": 200})] if status == COMMITTED else []
+            [make_checkpoint(5, {"source1": 100, "source2": 200})]
+            if status == CheckpointStatus.COMMITTED
+            else []
         )
         assert uncommitted_checkpoints == (
-            [make_checkpoint(5, {"source1": 100, "source2": 200})] if status == UNCOMMITTED else []
+            [make_checkpoint(5, {"source1": 100, "source2": 200})]
+            if status == CheckpointStatus.UNCOMMITTED
+            else []
         )
 
     @pytest.mark.parametrize(
         ("file_num", "status", "checkpoint_data"),
         [
-            (7, COMMITTED, {"source1": 300, "source2": 400}),
-            (2, UNCOMMITTED, {"source1": 75}),
-            (0, COMMITTED, {"test": "zero"}),
-            (999, UNCOMMITTED, {"large": "number"}),
+            (7, CheckpointStatus.COMMITTED, {"source1": 300, "source2": 400}),
+            (2, CheckpointStatus.UNCOMMITTED, {"source1": 75}),
+            (0, CheckpointStatus.COMMITTED, {"test": "zero"}),
+            (999, CheckpointStatus.UNCOMMITTED, {"large": "number"}),
         ],
     )
     def test_from_json_parses_correctly(
@@ -746,14 +749,14 @@ class TestCheckpoint:
                 [
                     make_committed_checkpoint(file_num, checkpoint_data),
                 ]
-                if status == COMMITTED
+                if status == CheckpointStatus.COMMITTED
                 else []
             ),
             uncommitted_checkpoints=(
                 [
                     make_checkpoint(file_num, checkpoint_data),
                 ]
-                if status == UNCOMMITTED
+                if status == CheckpointStatus.UNCOMMITTED
                 else []
             ),
         )
@@ -761,7 +764,7 @@ class TestCheckpoint:
         checkpoint = Checkpoint.from_json(tmp_path / f"{file_num}.{status}")
 
         expected_checkpoint = (
-            make_checkpoint if status == UNCOMMITTED else make_committed_checkpoint
+            make_checkpoint if status == CheckpointStatus.UNCOMMITTED else make_committed_checkpoint
         )(
             file_num,
             checkpoint_data,

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 from freezegun import freeze_time
 
-from bream.core._checkpoint_directory import COMMITTED, UNCOMMITTED, Checkpoint, CheckpointMetadata
+from bream.core._checkpoint_directory import Checkpoint, CheckpointMetadata, CheckpointStatus
 from bream.core._definitions import Batch, BatchRequest, JsonableNonNull, Source
 
 if TYPE_CHECKING:
@@ -87,8 +87,8 @@ def setup_checkpoint_directory(
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     for checkpoints, status in [
-        (committed_checkpoints, COMMITTED),
-        (uncommitted_checkpoints, UNCOMMITTED),
+        (committed_checkpoints, CheckpointStatus.COMMITTED),
+        (uncommitted_checkpoints, CheckpointStatus.UNCOMMITTED),
     ]:
         if checkpoints:
             for checkpoint in checkpoints:
@@ -109,7 +109,7 @@ def get_checkpoint_directory_state(
         uncommitted_checkpoints: List of tuples (number, data) for uncommitted checkpoints
     """
     fetched_checkpoints: dict[str, list[Checkpoint]] = {}
-    for extension in [COMMITTED, UNCOMMITTED]:
+    for extension in [CheckpointStatus.COMMITTED, CheckpointStatus.UNCOMMITTED]:
         paths = checkpoint_dir.glob(f"*.{extension}")
         fetched_checkpoints_: list[Checkpoint] = []
         for p in paths:
@@ -118,8 +118,8 @@ def get_checkpoint_directory_state(
         fetched_checkpoints[extension] = fetched_checkpoints_
     sk = lambda x: x.number  # noqa: E731
     return (
-        sorted(fetched_checkpoints[COMMITTED], key=sk),
-        sorted(fetched_checkpoints[UNCOMMITTED], key=sk),
+        sorted(fetched_checkpoints[CheckpointStatus.COMMITTED], key=sk),
+        sorted(fetched_checkpoints[CheckpointStatus.UNCOMMITTED], key=sk),
     )
 
 

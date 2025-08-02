@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Any, Literal
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
@@ -18,13 +19,16 @@ if TYPE_CHECKING:
 
     from bream.core._definitions import JsonableNonNull, Pathlike
 
-# TODO: use enums
-STATUS = Literal["committed", "uncommitted"]
-COMMITTED: STATUS = "committed"
-COMMITTED_TMP = f"{COMMITTED}_tmp"
-UNCOMMITTED: STATUS = "uncommitted"
-UNCOMMITTED_TMP = f"{UNCOMMITTED}_tmp"
+
 DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
+
+
+class CheckpointStatus(Enum):
+    COMMITTED = "committed"
+    UNCOMMITTED = "uncommitted"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 @dataclass(frozen=True)
@@ -37,11 +41,13 @@ class CheckpointMetadata:
 class Checkpoint:
     """Data model of a checkpoint."""
 
+    _TMP_FILE_SUFFIX = "_tmp"
+
     number: int
     checkpoint_data: JsonableNonNull
     checkpoint_metadata: CheckpointMetadata
 
-    def to_json(self, parent_path: Pathlike, *, status: STATUS) -> None:
+    def to_json(self, parent_path: Pathlike, *, status: CheckpointStatus) -> None:
         """Write checkpoint to JSON file.
 
         Args:
@@ -53,10 +59,7 @@ class Checkpoint:
 
         filename = f"{self.number}.{status}"
         dst_path = parent_path / filename
-        tmp_extension = {
-            UNCOMMITTED: UNCOMMITTED_TMP,
-            COMMITTED: COMMITTED_TMP,
-        }[status]
+        tmp_extension = f"{status}{self._TMP_FILE_SUFFIX}"
         tmp_path = parent_path / f"{dst_path.stem}.{tmp_extension}"
 
         data = {
@@ -119,11 +122,11 @@ class CheckpointDirectory:
 
     @property
     def _uncommitted_paths(self) -> list[Pathlike]:
-        return list(self._path.glob(f"*.{UNCOMMITTED}"))
+        return list(self._path.glob(f"*.{CheckpointStatus.UNCOMMITTED}"))
 
     @property
     def _committed_paths(self) -> list[Pathlike]:
-        return list(self._path.glob(f"*.{COMMITTED}"))
+        return list(self._path.glob(f"*.{CheckpointStatus.COMMITTED}"))
 
     @property
     def max_committed(self) -> Checkpoint | None:
@@ -132,7 +135,7 @@ class CheckpointDirectory:
         if not committed_ints:
             return None
         max_committed_int = max(committed_ints)
-        checkpoint_path = self._path / f"{max_committed_int}.{COMMITTED}"
+        checkpoint_path = self._path / f"{max_committed_int}.{CheckpointStatus.COMMITTED}"
         return Checkpoint.from_json(checkpoint_path)
 
     @property
@@ -142,7 +145,7 @@ class CheckpointDirectory:
         if not uncommitted_ints:
             return None
         uncommitted_int = uncommitted_ints[0]
-        checkpoint_path = self._path / f"{uncommitted_int}.{UNCOMMITTED}"
+        checkpoint_path = self._path / f"{uncommitted_int}.{CheckpointStatus.UNCOMMITTED}"
         return Checkpoint.from_json(checkpoint_path)
 
     def create_uncommitted(self, checkpoint_data: JsonableNonNull) -> None:
@@ -165,7 +168,7 @@ class CheckpointDirectory:
                 committed_at=None,
             ),
         )
-        checkpoint.to_json(self._path, status=UNCOMMITTED)
+        checkpoint.to_json(self._path, status=CheckpointStatus.UNCOMMITTED)
 
     def remove_uncommitted(self) -> None:
         """Remove the uncommitted checkpoint.
@@ -200,7 +203,7 @@ class CheckpointDirectory:
             ),
         )
 
-        committed_checkpoint.to_json(self._path, status=COMMITTED)
+        committed_checkpoint.to_json(self._path, status=CheckpointStatus.COMMITTED)
 
         uncommitted_path.unlink()
 
@@ -239,7 +242,7 @@ class CheckpointDirectory:
         uncommitted_ints = {int(p.stem) for p in self._uncommitted_paths}
         committed_ints_with_uncommitted = set(committed_ints).intersection(uncommitted_ints)
         for i in committed_ints_with_uncommitted:
-            p = self._path / f"{i}.{UNCOMMITTED}"
+            p = self._path / f"{i}.{CheckpointStatus.UNCOMMITTED}"
             p.unlink()
 
     def _clean_old_committed_checkpoints(self) -> None:

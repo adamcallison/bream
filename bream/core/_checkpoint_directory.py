@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 DEFAULT_RETAIN_NUM_COMMITTED_CHECKPOINTS = 100
 
 
-class CheckpointStatus(Enum):
+class CheckpointStatus(str, Enum):
     COMMITTED = "committed"
     UNCOMMITTED = "uncommitted"
 
@@ -105,15 +105,11 @@ class CheckpointDirectory:
     ) -> None:
         self._path = path
         self._retain_old_committed_checkpoints = retain_old_committed_checkpoints
-        self._raise_if_unrecoverable_invalid_state()
-        self._repair_if_recoverable_invalid_state()
-        self._clean_old_committed_checkpoints()
+        self._validate_repair_and_clean()
 
     def __getattribute__(self, name: str) -> Any:  # noqa: ANN401
         if name == "__init__" or not name.startswith("_"):
-            self._raise_if_unrecoverable_invalid_state()
-            self._repair_if_recoverable_invalid_state()
-            self._clean_old_committed_checkpoints()
+            self._validate_repair_and_clean()
         return object.__getattribute__(self, name)
 
     @property
@@ -158,10 +154,10 @@ class CheckpointDirectory:
             msg = "There is already an uncommitted checkpoint."
             raise CheckpointDirectoryInvalidOperationError(msg)
         committed_ints = [int(p.stem) for p in self._committed_paths]
-        uncomitted_int_to_create = max(committed_ints) + 1 if committed_ints else 0
+        uncommitted_int_to_create = max(committed_ints) + 1 if committed_ints else 0
 
         checkpoint = Checkpoint(
-            number=uncomitted_int_to_create,
+            number=uncommitted_int_to_create,
             checkpoint_data=checkpoint_data,
             checkpoint_metadata=CheckpointMetadata(
                 created_at=datetime.now(tz=timezone.utc).timestamp(),
@@ -207,9 +203,22 @@ class CheckpointDirectory:
 
         uncommitted_path.unlink()
 
-    def _raise_if_unrecoverable_invalid_state(self) -> None:
-        committed_ints = sorted(int(p.stem) for p in self._committed_paths)
-        uncommitted_ints = sorted(int(p.stem) for p in self._uncommitted_paths)
+    def _validate_repair_and_clean(self) -> None:
+        """Single-scan validation, repair, and cleanup to maintain directory integrity."""
+        committed_paths = list(self._path.glob(f"*.{CheckpointStatus.COMMITTED}"))
+        uncommitted_paths = list(self._path.glob(f"*.{CheckpointStatus.UNCOMMITTED}"))
+
+        self._raise_if_unrecoverable_invalid_state_from_paths(committed_paths, uncommitted_paths)
+        self._repair_uncommitted_duplicates_from_paths(committed_paths, uncommitted_paths)
+        self._clean_old_committed_checkpoints_from_paths(committed_paths, uncommitted_paths)
+
+    def _raise_if_unrecoverable_invalid_state_from_paths(
+        self,
+        committed_paths: list[Pathlike],
+        uncommitted_paths: list[Pathlike],
+    ) -> None:
+        committed_ints = sorted(int(p.stem) for p in committed_paths)
+        uncommitted_ints = sorted(int(p.stem) for p in uncommitted_paths)
 
         uncommitted_ints_without_committed = set(uncommitted_ints) - set(committed_ints)
         if len(uncommitted_ints_without_committed) > 1:
@@ -237,16 +246,25 @@ class CheckpointDirectory:
             )
             raise CheckpointDirectoryValidityError(msg)
 
-    def _repair_if_recoverable_invalid_state(self) -> None:
-        committed_ints = {int(p.stem) for p in self._committed_paths}
-        uncommitted_ints = {int(p.stem) for p in self._uncommitted_paths}
+    def _repair_uncommitted_duplicates_from_paths(
+        self,
+        committed_paths: list[Pathlike],
+        uncommitted_paths: list[Pathlike],
+    ) -> None:
+        committed_ints = {int(p.stem) for p in committed_paths}
+        uncommitted_ints = {int(p.stem) for p in uncommitted_paths}
         committed_ints_with_uncommitted = set(committed_ints).intersection(uncommitted_ints)
         for i in committed_ints_with_uncommitted:
             p = self._path / f"{i}.{CheckpointStatus.UNCOMMITTED}"
             p.unlink()
 
-    def _clean_old_committed_checkpoints(self) -> None:
-        sorted_committed_paths = sorted(self._committed_paths, key=lambda p: int(p.stem))
+    def _clean_old_committed_checkpoints_from_paths(
+        self,
+        committed_paths: list[Pathlike],
+        uncommitted_paths: list[Pathlike],
+    ) -> None:
+        del uncommitted_paths
+        sorted_committed_paths = sorted(committed_paths, key=lambda p: int(p.stem))
         num_delete = max(0, len(sorted_committed_paths) - self._retain_old_committed_checkpoints)
         for p in sorted_committed_paths[:num_delete]:
             # must go in sorted order to maintain the consecutivity in case of failure

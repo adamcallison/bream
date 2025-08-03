@@ -37,27 +37,43 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("special_helper_method",),
         [
-            (CheckpointDirectory._raise_if_unrecoverable_invalid_state.__name__,),  # noqa: SLF001
-            (CheckpointDirectory._repair_if_recoverable_invalid_state.__name__,),  # noqa: SLF001
-            (CheckpointDirectory._clean_old_committed_checkpoints.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._raise_if_unrecoverable_invalid_state_from_paths.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._repair_uncommitted_duplicates_from_paths.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._clean_old_committed_checkpoints_from_paths.__name__,),  # noqa: SLF001
         ],
     )
     def test__init__calls_special_helper_method(self, tmp_path, special_helper_method):
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[make_committed_checkpoint(0, 0)],
+            uncommitted_checkpoints=[make_checkpoint(1, 1)],
+        )
         with patch.object(CheckpointDirectory, special_helper_method) as mock_special_helper_method:
             CheckpointDirectory(tmp_path)
-            mock_special_helper_method.assert_called_once_with()
+            assert mock_special_helper_method.call_args_list == [
+                call(
+                    [tmp_path / f"0.{CheckpointStatus.COMMITTED}"],
+                    [tmp_path / f"1.{CheckpointStatus.UNCOMMITTED}"],
+                ),
+            ]
 
     @pytest.mark.parametrize(
         ("special_helper_method",),
         [
-            (CheckpointDirectory._raise_if_unrecoverable_invalid_state.__name__,),  # noqa: SLF001
-            (CheckpointDirectory._repair_if_recoverable_invalid_state.__name__,),  # noqa: SLF001
-            (CheckpointDirectory._clean_old_committed_checkpoints.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._raise_if_unrecoverable_invalid_state_from_paths.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._repair_uncommitted_duplicates_from_paths.__name__,),  # noqa: SLF001
+            (CheckpointDirectory._clean_old_committed_checkpoints_from_paths.__name__,),  # noqa: SLF001
         ],
     )
     def test_method_calls_call_special_helper_method(self, tmp_path, special_helper_method):
         class CheckpointDirectoryWithNewMethod(CheckpointDirectory):
             def a_new_method(self) -> None: ...
+
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[make_committed_checkpoint(0, 0)],
+            uncommitted_checkpoints=[make_checkpoint(1, 1)],
+        )
 
         with patch.object(
             CheckpointDirectoryWithNewMethod,
@@ -65,7 +81,16 @@ class TestCheckpointDirectory:
         ) as mock_special_helper_method:
             checkpoing_directory = CheckpointDirectoryWithNewMethod(tmp_path)
             checkpoing_directory.a_new_method()
-            assert mock_special_helper_method.call_args_list == [call(), call()]
+            assert (
+                mock_special_helper_method.call_args_list
+                == [
+                    call(
+                        [tmp_path / f"0.{CheckpointStatus.COMMITTED}"],
+                        [tmp_path / f"1.{CheckpointStatus.UNCOMMITTED}"],
+                    ),
+                ]
+                * 2
+            )
 
     @pytest.mark.parametrize(
         ("committed_checkpoints", "uncommitted_checkpoints", "error_message"),

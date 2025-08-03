@@ -21,6 +21,7 @@ STREAM_DEFINITION_FILE_NAME = "definition"
 CHECKPOINT_DIRECTORY_NAME = "checkpoints"
 
 WAITHELPER_ITERATION_INTERVAL = 0.5
+WAITHELPER_INITIAL_TICK_TIME = -float("inf")  # Represents "never ticked before"
 
 
 @dataclass(frozen=True)
@@ -62,27 +63,28 @@ class _WaitHelper:
         self._iter_interval = iter_interval
 
     def __call__(self) -> Generator[_WaitHelperStates]:
-        tick = -float("inf")
+        tick = WAITHELPER_INITIAL_TICK_TIME
         while True:
             time_since_tick = time() - tick
             remaining_wait_seconds = self._wait_seconds - time_since_tick
-            if remaining_wait_seconds <= 0:
-                sleep_time = 0.0
-                state_to_yield = _WaitHelperStates.proceed
-            elif remaining_wait_seconds <= self._iter_interval:
-                sleep_time = remaining_wait_seconds
-                state_to_yield = _WaitHelperStates.proceed
-            else:
-                sleep_time = self._iter_interval
-                state_to_yield = _WaitHelperStates.wait
 
-            if sleep_time:
+            should_proceed = remaining_wait_seconds <= self._iter_interval
+            sleep_time = self._calculate_sleep_time(remaining_wait_seconds)
+
+            if sleep_time > 0:
                 sleep(sleep_time)
 
-            if state_to_yield == _WaitHelperStates.proceed:
+            if should_proceed:
                 tick = time()
+                yield _WaitHelperStates.proceed
+            else:
+                yield _WaitHelperStates.wait
 
-            yield state_to_yield
+    def _calculate_sleep_time(self, remaining_wait_seconds: float) -> float:
+        """Calculate how long to sleep based on remaining wait time."""
+        if remaining_wait_seconds <= 0:
+            return 0.0
+        return min(remaining_wait_seconds, self._iter_interval)
 
 
 class Stream:

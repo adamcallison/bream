@@ -25,6 +25,27 @@ class SourceCollection(Source):
         self._sources = list(sources)
         self.name = ":".join(source.name for source in self._sources)
 
+    def _get_source_boundary(
+        self,
+        boundaries: dict[str, JsonableNonNull | None] | None,
+        source_name: str,
+    ) -> JsonableNonNull | None:
+        """Safely extract a boundary value for a source from a potentially None dictionary."""
+        return boundaries[source_name] if boundaries is not None else None
+
+    def _should_read_source(
+        self,
+        source_read_from_after: JsonableNonNull | None,
+        source_read_to: JsonableNonNull | None,
+    ) -> bool:
+        """Determine if a source should be read based on its boundaries.
+
+        Returns False for replay scenarios where we know the source had no data
+        in the requested range (i.e., when read_to equals read_from_after).
+        This optimization avoids redundant source calls during batch replay.
+        """
+        return source_read_to is None or source_read_to != source_read_from_after
+
     def read(self, batch_request: BatchRequest) -> Batch | None:
         """Read data from the collection of sources according to the batch request.
 
@@ -39,24 +60,20 @@ class SourceCollection(Source):
             The batches of data if any of the sources provided one available, otherwise None.
 
         """
-        br_read_from_after: dict[str, JsonableNonNull | None] = batch_request.read_from_after  # type: ignore[assignment]
-        br_read_to: dict[str, JsonableNonNull | None] = batch_request.read_to  # type: ignore[assignment]
+        br_read_from_after: dict[str, JsonableNonNull | None] | None = batch_request.read_from_after  # type: ignore[assignment]
+        br_read_to: dict[str, JsonableNonNull | None] | None = batch_request.read_to  # type: ignore[assignment]
 
         sub_batches: dict[str, Batch | None] = {}
         data: dict[str, Any] = {}
         read_to: dict[str, JsonableNonNull | None] = {}
         for source in self._sources:
-            source_read_from_after = br_read_from_after[source.name] if br_read_from_after else None
-            source_read_to = br_read_to[source.name] if batch_request.read_to is not None else None
-            if source_read_to is None or source_read_to != source_read_from_after:
-                # TODO: decide if this is the right place for this if statement
+            source_read_from_after = self._get_source_boundary(br_read_from_after, source.name)
+            source_read_to = self._get_source_boundary(br_read_to, source.name)
+
+            if self._should_read_source(source_read_from_after, source_read_to):
                 source_batch_request = BatchRequest(
-                    read_from_after=(
-                        br_read_from_after[source.name] if batch_request.read_from_after else None
-                    ),
-                    read_to=(
-                        br_read_to[source.name] if batch_request.read_to is not None else None
-                    ),
+                    read_from_after=source_read_from_after,
+                    read_to=source_read_to,
                 )
                 sub_batch = source.read(source_batch_request)
             else:
@@ -70,10 +87,8 @@ class SourceCollection(Source):
         for source_name, sub_batch in sub_batches.items():
             if sub_batch is not None:
                 data[source_name] = sub_batch.data
-            read_to[source_name] = (
-                sub_batch.read_to
-                if sub_batch is not None
-                else (br_read_from_after[source_name] if br_read_from_after is not None else None)
-            )
+                read_to[source_name] = sub_batch.read_to
+            else:
+                read_to[source_name] = self._get_source_boundary(br_read_from_after, source_name)
 
         return Batch(data=data, read_to=read_to)

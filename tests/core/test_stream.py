@@ -411,7 +411,6 @@ class TestStream:
         batch_function_factory,
         expect_stream_restarts,
     ) -> None:
-        # TODO: this is a very "integrationy" test. does it belong here?
         source1 = SimpleDictSource("source1", 13, 3)
         source2 = SimpleDictSource("source2", 5, 2)
         stream_path = tmp_path / "stream"

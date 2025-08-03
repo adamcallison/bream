@@ -67,7 +67,7 @@ class _AnyPathTypingWrapper(Path, ABC):
 
     def __new__(cls, path: str) -> _AnyPathTypingWrapper:  # noqa: PYI034
         """Dispatch construction to `cloudpathlib.AnyPath`."""
-        return AnyPath(path)  # type: ignore [return-value]
+        return AnyPath(path)  # type: ignore [return-value]  # pragma: no cover
 
 
 Pathlike: TypeAlias = "Path | _AnyPathTypingWrapper"

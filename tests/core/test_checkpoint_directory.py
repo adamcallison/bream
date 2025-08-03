@@ -8,6 +8,7 @@ import pytest
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
     CheckpointDirectoryValidityError,
+    CheckpointFileCorruptionError,
 )
 from bream.core._checkpoint_directory import (
     Checkpoint,
@@ -795,3 +796,23 @@ class TestCheckpoint:
             checkpoint_data,
         )
         assert checkpoint == expected_checkpoint
+
+    @pytest.mark.parametrize(
+        ("corrupt_content",),
+        [
+            ("{ invalid json content",),
+            ("",),
+            ('{"missing": "required_fields"}',),
+        ],
+    )
+    def test_from_json_with_corrupted_json_raises(
+        self,
+        tmp_path,
+        corrupt_content,
+    ):
+        """Test that corrupted checkpoint files raise CheckpointFileCorruptionError."""
+        checkpoint_file = tmp_path / "123.json"
+        checkpoint_file.write_text(corrupt_content)
+
+        with pytest.raises(CheckpointFileCorruptionError, match="Checkpoint file .* is corrupted"):
+            Checkpoint.from_json(checkpoint_file)

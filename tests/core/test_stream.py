@@ -6,10 +6,14 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from bream._exceptions import StreamLogicalError
+from bream._exceptions import StreamDefinitionCorruptionError, StreamLogicalError
 from bream.core._definitions import Batch, BatchRequest, Source, StreamOptions
 from bream.core._source_collection import SourceCollection
-from bream.core._stream import STREAM_DEFINITION_FILE_NAME, WAITHELPER_ITERATION_INTERVAL, Stream
+from bream.core._stream import (
+    STREAM_DEFINITION_FILE_NAME,
+    WAITHELPER_ITERATION_INTERVAL,
+    Stream,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -496,3 +500,22 @@ class TestStream:
         assert batches_seen == expected_batches_seen
         stream_restarts = num_stream_starts > 1
         assert stream_restarts == expect_stream_restarts
+
+    @pytest.mark.parametrize(
+        ("corrupt_content",),
+        [
+            ("{ invalid json content",),
+            ("",),
+            ('{"missing": "required_fields"}',),
+        ],
+    )
+    def test_corrupted_definition_file_raises(self, tmp_path, corrupt_content):
+        source = SimpleDictSource("source", 5, 3)
+        stream_path = tmp_path / "stream"
+
+        stream_definition_file = stream_path / STREAM_DEFINITION_FILE_NAME
+        stream_definition_file.parent.mkdir(parents=True, exist_ok=True)
+        stream_definition_file.write_text(corrupt_content)
+
+        with pytest.raises(StreamDefinitionCorruptionError):
+            Stream(source, stream_path)

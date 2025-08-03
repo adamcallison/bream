@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
     CheckpointDirectoryValidityError,
+    CheckpointFileCorruptionError,
 )
 from bream.core._utils import dump_json_atomically
 
@@ -83,16 +84,26 @@ class Checkpoint:
         number = int(file_path.stem)
 
         with file_path.open("r") as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except json.JSONDecodeError as e:
+                msg = f"Checkpoint file {file_path} is corrupted: {e}"
+                raise CheckpointFileCorruptionError(msg) from e
 
-        return cls(
-            number=number,
-            checkpoint_data=data["checkpoint_data"],
-            checkpoint_metadata=CheckpointMetadata(
-                created_at=data["checkpoint_metadata"]["created_at"],
-                committed_at=data["checkpoint_metadata"]["committed_at"],
-            ),
-        )
+        try:
+            instance_ = cls(
+                number=number,
+                checkpoint_data=data["checkpoint_data"],
+                checkpoint_metadata=CheckpointMetadata(
+                    created_at=data["checkpoint_metadata"]["created_at"],
+                    committed_at=data["checkpoint_metadata"]["committed_at"],
+                ),
+            )
+        except KeyError as e:
+            msg = f"Checkpoint file {file_path} is corrupted: {e}"
+            raise CheckpointFileCorruptionError(msg) from e
+
+        return instance_
 
 
 class CheckpointDirectory:

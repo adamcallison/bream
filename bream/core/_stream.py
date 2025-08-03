@@ -9,7 +9,7 @@ from threading import Thread
 from time import sleep, time
 from typing import TYPE_CHECKING
 
-from bream._exceptions import StreamLogicalError
+from bream._exceptions import StreamDefinitionCorruptionError, StreamLogicalError
 from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
 from bream.core._utils import dump_json_atomically
@@ -43,7 +43,15 @@ class _StreamDefinitionFile:
         if not self.exists:
             return None
         with self._path.open("r") as f:
-            return _StreamDefinition(**json.load(f))
+            try:
+                return _StreamDefinition(**json.load(f))
+            except json.JSONDecodeError as e:
+                msg = f"Stream definition file {self._path} is corrupted: {e}"
+                raise StreamDefinitionCorruptionError(msg) from e
+            except TypeError as e:
+                if _StreamDefinition.__init__.__qualname__ in str(e):
+                    msg = f"Stream definition file {self._path} is corrupted: {e}"
+                raise StreamDefinitionCorruptionError(msg) from e
 
     def save(self, definition: _StreamDefinition) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)

@@ -253,6 +253,14 @@ class TestStream:
         with pytest.raises(StreamLogicalError):
             stream.start(batch_function, 0.01)
 
+    def test_stream_cannot_be_stopped_before_being_started(self, tmp_path):
+        source = SimpleDictSource("source", 13, 3)
+        stream_path = tmp_path / "stream"
+        stream = Stream(source, stream_path)
+        expected_error_msg = "Cannot stop a stream that hasn't been started."
+        with pytest.raises(StreamLogicalError, match=expected_error_msg):
+            stream.stop()
+
     def test_wait_is_blocking(self, tmp_path):
         source = SimpleDictSource("source", 13, 3)
         stream_path = tmp_path / "stream"

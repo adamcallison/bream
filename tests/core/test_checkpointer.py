@@ -4,11 +4,12 @@ from contextlib import suppress
 
 import pytest
 
+from bream._exceptions import SourceProtocolError
 from bream.core._checkpointer import (
     CheckpointDirectory,
     Checkpointer,
 )
-from bream.core._definitions import Batch
+from bream.core._definitions import Batch, BatchRequest
 from tests.core.helpers import (
     MockSource,
     freeze_default_committed_at_time,
@@ -19,6 +20,25 @@ from tests.core.helpers import (
     make_committed_checkpoint,
     setup_checkpoint_directory,
 )
+
+
+class MockSourceWithWrongOffset(MockSource):
+    """A MockSource that returns a different read_to than what was requested."""
+
+    def __init__(self, name: str, requested_offset: int, returned_offset: int) -> None:
+        super().__init__(name, advances_per_batch=3)
+        self._requested_offset = requested_offset
+        self._returned_offset = returned_offset
+
+    def read(self, batch_request: BatchRequest) -> Batch | None:
+        # Only return wrong offset if the request matches our expected scenario
+        if batch_request.read_to == self._requested_offset:
+            return Batch(
+                data=f"data_from: {batch_request}",
+                read_to=self._returned_offset,
+            )
+        # Fall back to normal behavior
+        return super().read(batch_request)  # pragma: no cover
 
 
 class TestCheckpointer:
@@ -199,3 +219,25 @@ class TestCheckpointer:
             [make_committed_checkpoint(0, 5), make_committed_checkpoint(1, 10)],
             [],
         )
+
+    def test_raises_source_protocol_error_when_source_reads_to_wrong_offset(self, tmp_path):
+        """Test that SourceProtocolError is raised when source doesn't read to requested offset."""
+        # Set up an uncommitted checkpoint that will be used as read_to in the batch request
+        requested_offset = 18
+        returned_offset = 20  # Different from requested
+
+        source = MockSourceWithWrongOffset("test_source", requested_offset, returned_offset)
+        setup_checkpoint_directory(
+            tmp_path,
+            committed_checkpoints=[make_committed_checkpoint(0, 10)],
+            uncommitted_checkpoints=[make_checkpoint(1, requested_offset)],
+        )
+        checkpointer = Checkpointer(source, CheckpointDirectory(tmp_path))
+
+        expected_error_msg = (
+            f"Source test_source was told to read to offset {requested_offset} "
+            f"but claims to have read to {returned_offset}."
+        )
+
+        with pytest.raises(SourceProtocolError, match=expected_error_msg), checkpointer.batch():
+            ...

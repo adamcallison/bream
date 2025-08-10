@@ -23,18 +23,13 @@ class BatchRequest:
 
 @dataclass(frozen=True)
 class Batch:
-    """A batch returned by a data source.
-
-    Parameters
-    ----------
-        data
-            The data for this batch.
-            The source offset that was read to for this batch.
-
-    """
+    """A batch returned by a data source."""
 
     data: Any
+    """The data for this batch."""
+
     read_to: JsonableNonNull
+    """The source offset that was read to for this batch."""
 
 
 class Source(ABC):
@@ -75,23 +70,19 @@ Pathlike: TypeAlias = "Path | _AnyPathTypingWrapper"
 
 @dataclass(frozen=True)
 class StreamStatus:
-    """Status information of a stream.
-
-    Parameters
-    ----------
-    started
-        Whether the stream has been started.
-    active
-        Whether the stream is currently active.
-    error
-        The error, if the stream terminated with an error.
-
-    """
+    """Status information of a stream."""
 
     started: bool = False
+    """Whether the stream has been started."""
+
     active: bool = False
+    """Whether the stream is currently active."""
+
     retry_count: int = 0
+    """The number of times the stream has retried."""
+
     errors: list[Exception] = field(default_factory=list)
+    """The errors the stream has retried after, or terminated with, in order of occurrence."""
 
 
 @dataclass(frozen=True)

@@ -9,6 +9,8 @@ from threading import Thread
 from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
+from typing_extensions import Self
+
 from bream._exceptions import StreamDefinitionCorruptionError, StreamLogicalError
 from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
@@ -69,12 +71,44 @@ class _WaitHelper:
     def __init__(self, wait_seconds: float, iter_interval: float) -> None:
         self._wait_seconds = wait_seconds
         self._iter_interval = iter_interval
+        self._wait_seconds_override: float | None = None
 
-    def __call__(self) -> Generator[_WaitHelperStates]:
+        self._tick = WAITHELPER_INITIAL_TICK_TIME
+
+    def __iter__(self) -> Self:
+        return self
+
+    def __next__(self) -> _WaitHelperStates:
+        current_wait_seconds = (
+            self._wait_seconds_override
+            if self._wait_seconds_override is not None
+            else self._wait_seconds
+        )
+        time_since_tick = monotonic() - self._tick
+        remaining_wait_seconds = current_wait_seconds - time_since_tick
+
+        should_proceed = remaining_wait_seconds <= self._iter_interval
+        sleep_time = self._calculate_sleep_time(remaining_wait_seconds)
+
+        if sleep_time > 0:
+            sleep(sleep_time)
+
+        if should_proceed:
+            self._tick = monotonic()
+            self._wait_seconds_override = None
+            return _WaitHelperStates.proceed
+        return _WaitHelperStates.wait
+
+    def __blahcall__(self) -> Generator[_WaitHelperStates]:
         tick = WAITHELPER_INITIAL_TICK_TIME
         while True:
+            current_wait_seconds = (
+                self._wait_seconds_override
+                if self._wait_seconds_override is not None
+                else self._wait_seconds
+            )
             time_since_tick = monotonic() - tick
-            remaining_wait_seconds = self._wait_seconds - time_since_tick
+            remaining_wait_seconds = current_wait_seconds - time_since_tick
 
             should_proceed = remaining_wait_seconds <= self._iter_interval
             sleep_time = self._calculate_sleep_time(remaining_wait_seconds)
@@ -85,6 +119,7 @@ class _WaitHelper:
             if should_proceed:
                 tick = monotonic()
                 yield _WaitHelperStates.proceed
+                self._wait_seconds_override = None
             else:
                 yield _WaitHelperStates.wait
 
@@ -93,6 +128,9 @@ class _WaitHelper:
         if remaining_wait_seconds <= 0:
             return 0.0
         return min(remaining_wait_seconds, self._iter_interval)
+
+    def set_wait_seconds_override(self, wait_seconds_override: float) -> None:
+        self._wait_seconds_override = wait_seconds_override
 
 
 class Stream:
@@ -148,8 +186,7 @@ class Stream:
 
     def _main_loop(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         waiter = _WaitHelper(min_batch_seconds, WAITHELPER_ITERATION_INTERVAL)
-
-        for waitstate in waiter():
+        for waitstate in waiter:
             if self._stop:
                 break
             if waitstate == _WaitHelperStates.wait:
@@ -166,6 +203,8 @@ class Stream:
                 ):
                     break
                 self._retries += 1
+                if self.options.min_seconds_between_retries is not None:
+                    waiter.set_wait_seconds_override(self.options.min_seconds_between_retries)
 
     def start(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         """Start the stream in a background thread.

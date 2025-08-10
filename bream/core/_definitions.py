@@ -105,4 +105,10 @@ class StreamOptions:
 
     max_retry_count: int | None = 0
     """Number of times the stream should attempt to recover on error, or None if it should retry
-    infinitely."""
+    infinitely.
+    """
+
+    min_seconds_between_retries: float | None = None
+    """Minimum number of seconds after the start of a failed batch that the batch should be retried
+    or None if `min_batch_seconds` specified on stream start should be used.
+    """

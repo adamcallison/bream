@@ -33,6 +33,20 @@ def get_well_behaved_function_and_batches_seen_list() -> tuple[
     return batch_function, batches_seen
 
 
+def get_function_that_errors_and_batches_seen_list() -> tuple[
+    Callable[[Batch], None],
+    list[Batch],
+]:
+    batches_seen: list[Batch] = []
+
+    def batch_function(batch: Batch) -> None:
+        nonlocal batches_seen
+        batches_seen.append(batch)
+        raise RuntimeError
+
+    return batch_function, batches_seen
+
+
 def get_flaky_function_and_batches_seen_list() -> tuple[
     Callable[[Batch], None],
     list[Batch],
@@ -137,6 +151,7 @@ class TestStream:
         _, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
         assert stream.options == StreamOptions(
             repeat_failed_batch_exactly=True,
+            max_retry_count=0,
         )
 
     def test_stream_definition_file_created_on_start(self, tmp_path):
@@ -199,7 +214,7 @@ class TestStream:
         stream.start(batch_function, 0.01)
         stream.stop(blocking=True)
         assert not stream.status.active
-        assert stream.status.error is None
+        assert stream.status.errors == []
 
     def test_start_respects_min_batch_seconds(self, tmp_path: Path) -> None:
         _, stream = self._basic_simpledictsource_stream(tmp_path / "stream", "source", 13, 3)
@@ -219,7 +234,7 @@ class TestStream:
         stream.stop(blocking=True)
         etime = time()
         assert not stream.status.active
-        assert stream.status.error is None
+        assert stream.status.errors == []
         assert etime - stime < 2 * WAITHELPER_ITERATION_INTERVAL
 
     def test_stop_without_blocking_does_not_block(self, tmp_path):
@@ -230,7 +245,50 @@ class TestStream:
         assert stream.status.active
         sleep(2)
         assert not stream.status.active
-        assert stream.status.error is None
+        assert stream.status.errors == []
+
+    @pytest.mark.parametrize(
+        ("max_retry_count",),
+        [
+            (0,),
+            (1,),
+            (2,),
+            (3,),
+        ],
+    )
+    def test_stream_respects_finite_max_retry_count(self, tmp_path, max_retry_count):
+        batch_function, batches_seen_list = get_function_that_errors_and_batches_seen_list()
+        options = StreamOptions(max_retry_count=max_retry_count)
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream(source, tmp_path / "stream", stream_options=options)
+        stream.start(batch_function, 0.01)
+        stream.wait()
+        assert len(batches_seen_list) == max_retry_count + 1
+        assert stream.status.retry_count == max_retry_count
+
+    def test_stream_respects_infinite_max_retry_count(self, tmp_path):
+        batch_function, batches_seen_list = get_function_that_errors_and_batches_seen_list()
+        options = StreamOptions(max_retry_count=None)
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream(source, tmp_path / "stream", stream_options=options)
+        stream.start(batch_function, 0.01)
+        sleep(0.1)
+        assert stream.status.active
+        assert len(batches_seen_list) > 1
+        assert stream.status.retry_count > 1
+        stream.stop()
+
+    def test_errors_get_reported_in_status(self, tmp_path):
+        batch_function, _ = get_function_that_errors_and_batches_seen_list()
+        options = StreamOptions(max_retry_count=2)
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream(source, tmp_path / "stream", stream_options=options)
+        stream.start(batch_function, 0.1)
+        for i in range(1, 4):
+            sleep(0.07)
+            assert len(stream.status.errors) == i
+            assert all(isinstance(e, RuntimeError) for e in stream.status.errors)
+        assert not stream.status.active
 
     def test_stream_cannot_be_reinstantiated_with_differently_named_sources(self, tmp_path):
         source1 = SimpleDictSource("source1", 13, 3)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, TypeAlias
 
@@ -90,7 +90,8 @@ class StreamStatus:
 
     started: bool = False
     active: bool = False
-    error: Exception | None = None
+    retry_count: int = 0
+    errors: list[Exception] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -101,3 +102,7 @@ class StreamOptions:
     """Whether to repeat a failed batch exactly on a stream restart, regardless of
     source configuration.
     """
+
+    max_retry_count: int | None = 0
+    """Number of times the stream should attempt to recover on error, or None if it should retry
+    infinitely."""

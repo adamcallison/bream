@@ -6,7 +6,7 @@ import json
 from dataclasses import asdict, dataclass
 from enum import Enum, auto
 from threading import Thread
-from time import sleep, time
+from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
 from bream._exceptions import StreamDefinitionCorruptionError, StreamLogicalError
@@ -73,7 +73,7 @@ class _WaitHelper:
     def __call__(self) -> Generator[_WaitHelperStates]:
         tick = WAITHELPER_INITIAL_TICK_TIME
         while True:
-            time_since_tick = time() - tick
+            time_since_tick = monotonic() - tick
             remaining_wait_seconds = self._wait_seconds - time_since_tick
 
             should_proceed = remaining_wait_seconds <= self._iter_interval
@@ -83,7 +83,7 @@ class _WaitHelper:
                 sleep(sleep_time)
 
             if should_proceed:
-                tick = time()
+                tick = monotonic()
                 yield _WaitHelperStates.proceed
             else:
                 yield _WaitHelperStates.wait
@@ -128,7 +128,8 @@ class Stream:
         self._started = False
         self._stop = False
         self._thread: Thread | None = None
-        self._error: Exception | None = None
+        self._retries: int = 0
+        self._errors: list[Exception] = []
 
     @property
     def options(self) -> StreamOptions:
@@ -148,17 +149,23 @@ class Stream:
     def _main_loop(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         waiter = _WaitHelper(min_batch_seconds, WAITHELPER_ITERATION_INTERVAL)
 
-        try:
-            for waitstate in waiter():
-                if self._stop:
-                    break
-                if waitstate == _WaitHelperStates.wait:
-                    continue
+        for waitstate in waiter():
+            if self._stop:
+                break
+            if waitstate == _WaitHelperStates.wait:
+                continue
+            try:
                 with self._checkpointer.batch() as batch:
                     if batch is not None:
                         func(batch)
-        except Exception as e:  # noqa: BLE001
-            self._error = e
+            except Exception as e:  # noqa: BLE001
+                self._errors.append(e)
+                if (
+                    self._options.max_retry_count is not None
+                    and self._retries == self._options.max_retry_count
+                ):
+                    break
+                self._retries += 1
 
     def start(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         """Start the stream in a background thread.
@@ -216,5 +223,6 @@ class Stream:
         return StreamStatus(
             started=self._started,
             active=(self._thread is not None and self._thread.is_alive()),
-            error=self._error,
+            retry_count=self._retries,
+            errors=self._errors,
         )

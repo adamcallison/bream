@@ -9,13 +9,15 @@ from threading import Thread
 from time import monotonic, sleep
 from typing import TYPE_CHECKING
 
+from typing_extensions import Self
+
 from bream._exceptions import StreamDefinitionCorruptionError, StreamLogicalError
 from bream.core._checkpointer import Checkpointer
 from bream.core._definitions import Batch, Pathlike, Source, StreamOptions, StreamStatus
 from bream.core._utils import dump_json_atomically
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Generator
+    from collections.abc import Callable
 
 STREAM_DEFINITION_FILE_NAME = "definition"
 CHECKPOINT_DIRECTORY_NAME = "checkpoints"
@@ -69,30 +71,42 @@ class _WaitHelper:
     def __init__(self, wait_seconds: float, iter_interval: float) -> None:
         self._wait_seconds = wait_seconds
         self._iter_interval = iter_interval
+        self._wait_seconds_override: float | None = None
 
-    def __call__(self) -> Generator[_WaitHelperStates]:
-        tick = WAITHELPER_INITIAL_TICK_TIME
-        while True:
-            time_since_tick = monotonic() - tick
-            remaining_wait_seconds = self._wait_seconds - time_since_tick
+        self._tick = WAITHELPER_INITIAL_TICK_TIME
 
-            should_proceed = remaining_wait_seconds <= self._iter_interval
-            sleep_time = self._calculate_sleep_time(remaining_wait_seconds)
+    def __iter__(self) -> Self:
+        return self
 
-            if sleep_time > 0:
-                sleep(sleep_time)
+    def __next__(self) -> _WaitHelperStates:
+        current_wait_seconds = (
+            self._wait_seconds_override
+            if self._wait_seconds_override is not None
+            else self._wait_seconds
+        )
+        time_since_tick = monotonic() - self._tick
+        remaining_wait_seconds = current_wait_seconds - time_since_tick
 
-            if should_proceed:
-                tick = monotonic()
-                yield _WaitHelperStates.proceed
-            else:
-                yield _WaitHelperStates.wait
+        should_proceed = remaining_wait_seconds <= self._iter_interval
+        sleep_time = self._calculate_sleep_time(remaining_wait_seconds)
+
+        if sleep_time > 0:
+            sleep(sleep_time)
+
+        if should_proceed:
+            self._tick = monotonic()
+            self._wait_seconds_override = None
+            return _WaitHelperStates.proceed
+        return _WaitHelperStates.wait
 
     def _calculate_sleep_time(self, remaining_wait_seconds: float) -> float:
         """Calculate how long to sleep based on remaining wait time."""
         if remaining_wait_seconds <= 0:
             return 0.0
         return min(remaining_wait_seconds, self._iter_interval)
+
+    def set_wait_seconds_override(self, wait_seconds_override: float) -> None:
+        self._wait_seconds_override = wait_seconds_override
 
 
 class Stream:
@@ -148,8 +162,7 @@ class Stream:
 
     def _main_loop(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         waiter = _WaitHelper(min_batch_seconds, WAITHELPER_ITERATION_INTERVAL)
-
-        for waitstate in waiter():
+        for waitstate in waiter:
             if self._stop:
                 break
             if waitstate == _WaitHelperStates.wait:
@@ -166,6 +179,8 @@ class Stream:
                 ):
                     break
                 self._retries += 1
+                if self.options.min_seconds_between_retries is not None:
+                    waiter.set_wait_seconds_override(self.options.min_seconds_between_retries)
 
     def start(self, func: Callable[[Batch], None], min_batch_seconds: float) -> None:
         """Start the stream in a background thread.

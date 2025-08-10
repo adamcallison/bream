@@ -290,6 +290,19 @@ class TestStream:
             assert all(isinstance(e, RuntimeError) for e in stream.status.errors)
         assert not stream.status.active
 
+    def test_retrying_stream_respects_min_seconds_between_retries(self, tmp_path):
+        batch_function, batches_seen_list = get_function_that_errors_and_batches_seen_list()
+        options = StreamOptions(max_retry_count=1, min_seconds_between_retries=0.5)
+        source = SimpleDictSource("source", 13, 3)
+        stream = Stream(source, tmp_path / "stream", stream_options=options)
+        stream.start(batch_function, 0.1)
+        sleep(0.12)
+        assert len(batches_seen_list) == 1
+        sleep(0.12)
+        assert len(batches_seen_list) == 1
+        stream.wait()
+        assert len(batches_seen_list) == 2  # noqa: PLR2004
+
     def test_stream_cannot_be_reinstantiated_with_differently_named_sources(self, tmp_path):
         source1 = SimpleDictSource("source1", 13, 3)
         source2 = SimpleDictSource("source2", 5, 2)

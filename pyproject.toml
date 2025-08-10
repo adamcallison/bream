@@ -6,7 +6,6 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "cloudpathlib>=0.21.0",
-    "strenum>=0.4.15",
     "typing-extensions>=4",
 ]
 

@@ -83,14 +83,9 @@ class Checkpoint:
         """
         number = int(file_path.stem)
 
-        with file_path.open("r") as f:
-            try:
-                data = json.load(f)
-            except json.JSONDecodeError as e:
-                msg = f"Checkpoint file {file_path} is corrupted: {e}"
-                raise CheckpointFileCorruptionError(msg) from e
-
         try:
+            with file_path.open("r") as f:
+                data = json.load(f)
             instance_ = cls(
                 number=number,
                 checkpoint_data=data["checkpoint_data"],
@@ -99,7 +94,7 @@ class Checkpoint:
                     committed_at=data["checkpoint_metadata"]["committed_at"],
                 ),
             )
-        except KeyError as e:
+        except (json.JSONDecodeError, KeyError) as e:
             msg = f"Checkpoint file {file_path} is corrupted: {e}"
             raise CheckpointFileCorruptionError(msg) from e
 
@@ -264,7 +259,7 @@ class CheckpointDirectory:
     ) -> None:
         committed_ints = {int(p.stem) for p in committed_paths}
         uncommitted_ints = {int(p.stem) for p in uncommitted_paths}
-        committed_ints_with_uncommitted = set(committed_ints).intersection(uncommitted_ints)
+        committed_ints_with_uncommitted = committed_ints.intersection(uncommitted_ints)
         for i in committed_ints_with_uncommitted:
             p = self._path / f"{i}.{CheckpointStatus.UNCOMMITTED}"
             p.unlink()

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from unittest.mock import call, patch
 
 import pytest
+from freezegun import freeze_time
 
 from bream._exceptions import (
     CheckpointDirectoryInvalidOperationError,
@@ -13,21 +16,97 @@ from bream._exceptions import (
 from bream.core._checkpoint_directory import (
     Checkpoint,
     CheckpointDirectory,
+    CheckpointMetadata,
     CheckpointStatus,
-)
-from tests.core.helpers import (
-    freeze_default_committed_at_time,
-    freeze_default_created_at_time,
-    get_checkpoint_directory_state,
-    make_checkpoint,
-    make_committed_checkpoint,
-    setup_checkpoint_directory,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Generator
     from pathlib import Path
 
     from bream.core._definitions import JsonableNonNull
+
+
+_DEFAULT_CREATED_AT_TIMESTAMP = 1753600000.0
+_DEFAULT_COMMITTED_AT_TIMESTAMP = 1753600010.0
+
+_DEFAULT_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=None,
+)
+
+
+_DEFAULT_COMMITTED_METADATA = CheckpointMetadata(
+    created_at=_DEFAULT_CREATED_AT_TIMESTAMP,
+    committed_at=_DEFAULT_COMMITTED_AT_TIMESTAMP,
+)
+
+
+@contextmanager
+def _freeze_default_created_at_time() -> Generator[None]:
+    with freeze_time(
+        datetime.fromtimestamp(_DEFAULT_CREATED_AT_TIMESTAMP, tz=timezone.utc),
+    ):
+        yield
+
+
+@contextmanager
+def _freeze_default_committed_at_time() -> Generator[None]:
+    with freeze_time(
+        datetime.fromtimestamp(_DEFAULT_COMMITTED_AT_TIMESTAMP, tz=timezone.utc),
+    ):
+        yield
+
+
+def _make_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
+    return Checkpoint(
+        number=number,
+        checkpoint_data=checkpoint_data,
+        checkpoint_metadata=_DEFAULT_METADATA,
+    )
+
+
+def _make_committed_checkpoint(number: int, checkpoint_data: JsonableNonNull) -> Checkpoint:
+    return Checkpoint(
+        number=number,
+        checkpoint_data=checkpoint_data,
+        checkpoint_metadata=_DEFAULT_COMMITTED_METADATA,
+    )
+
+
+def _setup_checkpoint_directory(
+    checkpoint_dir: Path,
+    *,
+    committed_checkpoints: list[Checkpoint] | None = None,
+    uncommitted_checkpoints: list[Checkpoint] | None = None,
+) -> None:
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    for checkpoints, status in [
+        (committed_checkpoints, CheckpointStatus.COMMITTED),
+        (uncommitted_checkpoints, CheckpointStatus.UNCOMMITTED),
+    ]:
+        if checkpoints:
+            for checkpoint in checkpoints:
+                checkpoint.to_json(checkpoint_dir, status=status)
+
+
+def _get_checkpoint_directory_state(
+    checkpoint_dir: Path,
+) -> tuple[list[Checkpoint], list[Checkpoint]]:
+    fetched_checkpoints: dict[str, list[Checkpoint]] = {}
+    for extension in [CheckpointStatus.COMMITTED, CheckpointStatus.UNCOMMITTED]:
+        paths = checkpoint_dir.glob(f"*.{extension}")
+        fetched_checkpoints_: list[Checkpoint] = []
+        for p in paths:
+            checkpoint = Checkpoint.from_json(p)
+            fetched_checkpoints_.append(checkpoint)
+        fetched_checkpoints[extension] = fetched_checkpoints_
+    sk = lambda x: x.number  # noqa: E731
+    return (
+        sorted(fetched_checkpoints[CheckpointStatus.COMMITTED], key=sk),
+        sorted(fetched_checkpoints[CheckpointStatus.UNCOMMITTED], key=sk),
+    )
 
 
 class TestCheckpointDirectory:
@@ -44,10 +123,10 @@ class TestCheckpointDirectory:
         ],
     )
     def test__init__calls_special_helper_method(self, tmp_path, special_helper_method):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
-            committed_checkpoints=[make_committed_checkpoint(0, 0)],
-            uncommitted_checkpoints=[make_checkpoint(1, 1)],
+            committed_checkpoints=[_make_committed_checkpoint(0, 0)],
+            uncommitted_checkpoints=[_make_checkpoint(1, 1)],
         )
         with patch.object(CheckpointDirectory, special_helper_method) as mock_special_helper_method:
             CheckpointDirectory(tmp_path)
@@ -70,10 +149,10 @@ class TestCheckpointDirectory:
         class CheckpointDirectoryWithNewMethod(CheckpointDirectory):
             def a_new_method(self) -> None: ...
 
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
-            committed_checkpoints=[make_committed_checkpoint(0, 0)],
-            uncommitted_checkpoints=[make_checkpoint(1, 1)],
+            committed_checkpoints=[_make_committed_checkpoint(0, 0)],
+            uncommitted_checkpoints=[_make_checkpoint(1, 1)],
         )
 
         with patch.object(
@@ -99,53 +178,53 @@ class TestCheckpointDirectory:
             (
                 None,
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 "There should be at most one uncommitted checkpoint.",
             ),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(1, {"a_source": 1}), make_checkpoint(2, {"a_source": 2})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(1, {"a_source": 1}), _make_checkpoint(2, {"a_source": 2})],
                 "There should be at most one uncommitted checkpoint.",
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
                 None,
                 "Commited checkpoints should be consecutive.",
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
-                [make_checkpoint(3, {"a_source": 3})],
+                [_make_checkpoint(3, {"a_source": 3})],
                 "Commited checkpoints should be consecutive.",
             ),
             (
                 None,
-                [make_checkpoint(1, {"a_source": 1})],
+                [_make_checkpoint(1, {"a_source": 1})],
                 "Uncommitted checkpoint must be one greater than maximum committed checkpoint, "
                 "or zero if there isn't one.",
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(3, {"a_source": 3})],
+                [_make_checkpoint(3, {"a_source": 3})],
                 "Uncommitted checkpoint must be one greater than maximum committed checkpoint, "
                 "or zero if there isn't one.",
             ),
             (
                 [
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
-                [make_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(0, {"a_source": 0})],
                 "Uncommitted checkpoint must be one greater than maximum committed checkpoint, "
                 "or zero if there isn't one.",
             ),
@@ -158,7 +237,7 @@ class TestCheckpointDirectory:
         uncommitted_checkpoints,
         error_message,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=uncommitted_checkpoints,
@@ -178,74 +257,74 @@ class TestCheckpointDirectory:
         ),
         [
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(0, {"a_source": 0})],
-                [make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(0, {"a_source": 0})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
                 [],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(0, {"a_source": 0})],
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                ],
-                [],
-            ),
-            (
-                [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                ],
-                [make_checkpoint(1, {"a_source": 1})],
-                [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 [],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(0, {"a_source": 0}), make_checkpoint(1, {"a_source": 1})],
+                [_make_checkpoint(1, {"a_source": 1})],
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 [],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(1, {"a_source": 1}), make_checkpoint(2, {"a_source": 2})],
+                [_make_checkpoint(0, {"a_source": 0}), _make_checkpoint(1, {"a_source": 1})],
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
+                [],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                ],
+                [_make_checkpoint(1, {"a_source": 1}), _make_checkpoint(2, {"a_source": 2})],
+                [
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                ],
+                [_make_checkpoint(2, {"a_source": 2})],
+            ),
+            (
+                [
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 [
-                    make_checkpoint(0, {"a_source": 0}),
-                    make_checkpoint(1, {"a_source": 1}),
-                    make_checkpoint(2, {"a_source": 2}),
+                    _make_checkpoint(0, {"a_source": 0}),
+                    _make_checkpoint(1, {"a_source": 1}),
+                    _make_checkpoint(2, {"a_source": 2}),
                 ],
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
+                [_make_checkpoint(2, {"a_source": 2})],
             ),
         ],
     )
@@ -257,7 +336,7 @@ class TestCheckpointDirectory:
         expected_final_committed_checkpoints,
         expected_final_uncommitted_checkpoints,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=initial_committed_checkpoints,
             uncommitted_checkpoints=initial_uncommitted_checkpoints,
@@ -266,7 +345,7 @@ class TestCheckpointDirectory:
         (
             final_committed_checkpoints,
             final_uncommitted_checkpoints,
-        ) = get_checkpoint_directory_state(tmp_path)
+        ) = _get_checkpoint_directory_state(tmp_path)
         assert final_committed_checkpoints == expected_final_committed_checkpoints
         assert final_uncommitted_checkpoints == expected_final_uncommitted_checkpoints
 
@@ -279,17 +358,17 @@ class TestCheckpointDirectory:
         ),
         [
             (None, None, 2, []),
-            ([make_committed_checkpoint(0, {"a_source": 0})], None, 2, [0]),
+            ([_make_committed_checkpoint(0, {"a_source": 0})], None, 2, [0]),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(1, {"a_source": 1})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(1, {"a_source": 1})],
                 2,
                 [0],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 None,
                 2,
@@ -297,18 +376,18 @@ class TestCheckpointDirectory:
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
+                [_make_checkpoint(2, {"a_source": 2})],
                 2,
                 [0, 1],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
                 None,
                 2,
@@ -316,19 +395,19 @@ class TestCheckpointDirectory:
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
-                [make_checkpoint(3, {"a_source": 3})],
+                [_make_checkpoint(3, {"a_source": 3})],
                 2,
                 [1, 2],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
                 None,
                 3,
@@ -336,20 +415,20 @@ class TestCheckpointDirectory:
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
                 ],
-                [make_checkpoint(3, {"a_source": 3})],
+                [_make_checkpoint(3, {"a_source": 3})],
                 3,
                 [0, 1, 2],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
-                    make_committed_checkpoint(3, {"a_source": 3}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(3, {"a_source": 3}),
                 ],
                 None,
                 3,
@@ -357,22 +436,22 @@ class TestCheckpointDirectory:
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
-                    make_committed_checkpoint(3, {"a_source": 3}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(3, {"a_source": 3}),
                 ],
-                [make_checkpoint(4, {"a_source": 4})],
+                [_make_checkpoint(4, {"a_source": 4})],
                 3,
                 [1, 2, 3],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
-                    make_committed_checkpoint(3, {"a_source": 3}),
-                    make_committed_checkpoint(4, {"a_source": 4}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(3, {"a_source": 3}),
+                    _make_committed_checkpoint(4, {"a_source": 4}),
                 ],
                 None,
                 3,
@@ -380,13 +459,13 @@ class TestCheckpointDirectory:
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
-                    make_committed_checkpoint(2, {"a_source": 2}),
-                    make_committed_checkpoint(3, {"a_source": 3}),
-                    make_committed_checkpoint(4, {"a_source": 4}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(2, {"a_source": 2}),
+                    _make_committed_checkpoint(3, {"a_source": 3}),
+                    _make_committed_checkpoint(4, {"a_source": 4}),
                 ],
-                [make_checkpoint(5, {"a_source": 5})],
+                [_make_checkpoint(5, {"a_source": 5})],
                 3,
                 [2, 3, 4],
             ),
@@ -400,7 +479,7 @@ class TestCheckpointDirectory:
         retain_old_committed_checkpoints,
         expected_surviving_committed_checkpoint_ints,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=uncommitted_checkpoints,
@@ -412,7 +491,7 @@ class TestCheckpointDirectory:
         (
             surviving_committed_checkpoints,
             surviving_uncommitted_checkpoints,
-        ) = get_checkpoint_directory_state(tmp_path)
+        ) = _get_checkpoint_directory_state(tmp_path)
         surviving_committed_checkpoint_ints = [t.number for t in surviving_committed_checkpoints]
         surviving_uncommitted_checkpoint_ints = [
             t.number for t in surviving_uncommitted_checkpoints
@@ -428,32 +507,32 @@ class TestCheckpointDirectory:
         ("committed_checkpoints", "uncommitted_checkpoints", "expected_committed_checkpoint"),
         [
             (None, None, None),
-            (None, [make_checkpoint(0, {"a_source": 0})], None),
+            (None, [_make_checkpoint(0, {"a_source": 0})], None),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
                 None,
-                make_committed_checkpoint(0, {"a_source": 0}),
+                _make_committed_checkpoint(0, {"a_source": 0}),
             ),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(1, {"a_source": 1})],
-                make_committed_checkpoint(0, {"a_source": 0}),
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(1, {"a_source": 1})],
+                _make_committed_checkpoint(0, {"a_source": 0}),
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 None,
-                make_committed_checkpoint(1, {"a_source": 1}),
+                _make_committed_checkpoint(1, {"a_source": 1}),
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
-                make_committed_checkpoint(1, {"a_source": 1}),
+                [_make_checkpoint(2, {"a_source": 2})],
+                _make_committed_checkpoint(1, {"a_source": 1}),
             ),
         ],
     )
@@ -464,7 +543,7 @@ class TestCheckpointDirectory:
         uncommitted_checkpoints,
         expected_committed_checkpoint,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=uncommitted_checkpoints,
@@ -478,30 +557,30 @@ class TestCheckpointDirectory:
             (None, None, None),
             (
                 None,
-                [make_checkpoint(0, {"a_source": 0})],
-                make_checkpoint(0, {"a_source": 0}),
+                [_make_checkpoint(0, {"a_source": 0})],
+                _make_checkpoint(0, {"a_source": 0}),
             ),
-            ([make_committed_checkpoint(0, {"a_source": 0})], None, None),
+            ([_make_committed_checkpoint(0, {"a_source": 0})], None, None),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(1, {"a_source": 1})],
-                make_checkpoint(1, {"a_source": 1}),
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(1, {"a_source": 1})],
+                _make_checkpoint(1, {"a_source": 1}),
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 None,
                 None,
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
-                make_checkpoint(2, {"a_source": 2}),
+                [_make_checkpoint(2, {"a_source": 2})],
+                _make_checkpoint(2, {"a_source": 2}),
             ),
         ],
     )
@@ -512,7 +591,7 @@ class TestCheckpointDirectory:
         uncommitted_checkpoints,
         expected_uncommitted_checkpoint,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=uncommitted_checkpoints,
@@ -523,17 +602,17 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("committed_checkpoints", "uncommitted_checkpoints"),
         [
-            (None, [make_checkpoint(0, {"a_source": 0})]),
+            (None, [_make_checkpoint(0, {"a_source": 0})]),
             (
-                [make_committed_checkpoint(0, {"a_source": 0})],
-                [make_checkpoint(1, {"a_source": 1})],
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                [_make_checkpoint(1, {"a_source": 1})],
             ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                [make_checkpoint(2, {"a_source": 2})],
+                [_make_checkpoint(2, {"a_source": 2})],
             ),
         ],
     )
@@ -543,7 +622,7 @@ class TestCheckpointDirectory:
         committed_checkpoints,
         uncommitted_checkpoints,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=uncommitted_checkpoints,
@@ -559,11 +638,11 @@ class TestCheckpointDirectory:
         ("committed_checkpoints", "expected_uncommitted_int"),
         [
             (None, 0),
-            ([make_committed_checkpoint(0, {"a_source": 0})], 1),
+            ([_make_committed_checkpoint(0, {"a_source": 0})], 1),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
                 2,
             ),
@@ -575,30 +654,30 @@ class TestCheckpointDirectory:
         committed_checkpoints,
         expected_uncommitted_int,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
         )
-        _, existing_uncommitted_checkpoints = get_checkpoint_directory_state(tmp_path)
+        _, existing_uncommitted_checkpoints = _get_checkpoint_directory_state(tmp_path)
         assert not existing_uncommitted_checkpoints
         checkpoint_directory = CheckpointDirectory(tmp_path)
         checkpoint_data_to_write: JsonableNonNull = {"a_source": 9001}
-        with freeze_default_created_at_time():
+        with _freeze_default_created_at_time():
             checkpoint_directory.create_uncommitted(checkpoint_data_to_write)
-        _, actual_uncommitted_checkpoints = get_checkpoint_directory_state(tmp_path)
+        _, actual_uncommitted_checkpoints = _get_checkpoint_directory_state(tmp_path)
         assert actual_uncommitted_checkpoints == [
-            make_checkpoint(expected_uncommitted_int, checkpoint_data_to_write),
+            _make_checkpoint(expected_uncommitted_int, checkpoint_data_to_write),
         ]
 
     @pytest.mark.parametrize(
         ("committed_checkpoints",),
         [
             (None,),
-            ([make_committed_checkpoint(0, {"a_source": 0})],),
+            ([_make_committed_checkpoint(0, {"a_source": 0})],),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
             ),
         ],
@@ -608,7 +687,7 @@ class TestCheckpointDirectory:
         tmp_path,
         committed_checkpoints,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
         )
@@ -622,14 +701,17 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("committed_checkpoints", "uncommitted_checkpoint"),
         [
-            (None, make_checkpoint(0, {"a_source": 0})),
-            ([make_committed_checkpoint(0, {"a_source": 0})], make_checkpoint(1, {"a_source": 1})),
+            (None, _make_checkpoint(0, {"a_source": 0})),
+            (
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                _make_checkpoint(1, {"a_source": 1}),
+            ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                make_checkpoint(2, {"a_source": 2}),
+                _make_checkpoint(2, {"a_source": 2}),
             ),
         ],
     )
@@ -639,14 +721,14 @@ class TestCheckpointDirectory:
         committed_checkpoints,
         uncommitted_checkpoint,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=[uncommitted_checkpoint],
         )
         checkpoint_directory = CheckpointDirectory(tmp_path)
         checkpoint_directory.remove_uncommitted()
-        assert get_checkpoint_directory_state(tmp_path) == (
+        assert _get_checkpoint_directory_state(tmp_path) == (
             (committed_checkpoints or []),
             [],
         )
@@ -655,11 +737,11 @@ class TestCheckpointDirectory:
         ("committed_checkpoints",),
         [
             (None,),
-            ([make_committed_checkpoint(0, {"a_source": 0})],),
+            ([_make_committed_checkpoint(0, {"a_source": 0})],),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
             ),
         ],
@@ -669,7 +751,7 @@ class TestCheckpointDirectory:
         tmp_path,
         committed_checkpoints,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
         )
@@ -683,14 +765,17 @@ class TestCheckpointDirectory:
     @pytest.mark.parametrize(
         ("committed_checkpoints", "uncommitted_checkpoint"),
         [
-            (None, make_checkpoint(0, {"a_source": 0})),
-            ([make_committed_checkpoint(0, {"a_source": 0})], make_checkpoint(1, {"a_source": 1})),
+            (None, _make_checkpoint(0, {"a_source": 0})),
+            (
+                [_make_committed_checkpoint(0, {"a_source": 0})],
+                _make_checkpoint(1, {"a_source": 1}),
+            ),
             (
                 [
-                    make_committed_checkpoint(0, {"a_source": 0}),
-                    make_committed_checkpoint(1, {"a_source": 1}),
+                    _make_committed_checkpoint(0, {"a_source": 0}),
+                    _make_committed_checkpoint(1, {"a_source": 1}),
                 ],
-                make_checkpoint(2, {"a_source": 2}),
+                _make_checkpoint(2, {"a_source": 2}),
             ),
         ],
     )
@@ -700,19 +785,19 @@ class TestCheckpointDirectory:
         committed_checkpoints,
         uncommitted_checkpoint: Checkpoint,
     ):
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=committed_checkpoints,
             uncommitted_checkpoints=[uncommitted_checkpoint],
         )
         checkpoint_directory = CheckpointDirectory(tmp_path)
 
-        with freeze_default_committed_at_time():
+        with _freeze_default_committed_at_time():
             checkpoint_directory.commit()
-        assert get_checkpoint_directory_state(tmp_path) == (
+        assert _get_checkpoint_directory_state(tmp_path) == (
             [
                 *(committed_checkpoints or []),
-                make_committed_checkpoint(
+                _make_committed_checkpoint(
                     uncommitted_checkpoint.number,
                     uncommitted_checkpoint.checkpoint_data,
                 ),
@@ -731,22 +816,22 @@ class TestCheckpoint:
     )
     def test_to_json_creates_correct_file(self, tmp_path, status):
         """Test Checkpoint.to_json creates file with correct extension."""
-        checkpoint = make_checkpoint(5, {"source1": 100, "source2": 200})
+        checkpoint = _make_checkpoint(5, {"source1": 100, "source2": 200})
 
         checkpoint_path = tmp_path / "checkpoints"
         checkpoint.to_json(checkpoint_path, status=status)
 
-        committed_checkpoints, uncommitted_checkpoints = get_checkpoint_directory_state(
+        committed_checkpoints, uncommitted_checkpoints = _get_checkpoint_directory_state(
             checkpoint_path,
         )
 
         assert committed_checkpoints == (
-            [make_checkpoint(5, {"source1": 100, "source2": 200})]
+            [_make_checkpoint(5, {"source1": 100, "source2": 200})]
             if status == CheckpointStatus.COMMITTED
             else []
         )
         assert uncommitted_checkpoints == (
-            [make_checkpoint(5, {"source1": 100, "source2": 200})]
+            [_make_checkpoint(5, {"source1": 100, "source2": 200})]
             if status == CheckpointStatus.UNCOMMITTED
             else []
         )
@@ -769,18 +854,18 @@ class TestCheckpoint:
     ):
         """Test Checkpoint.from_json parses checkpoint correctly."""
 
-        setup_checkpoint_directory(
+        _setup_checkpoint_directory(
             tmp_path,
             committed_checkpoints=(
                 [
-                    make_committed_checkpoint(file_num, checkpoint_data),
+                    _make_committed_checkpoint(file_num, checkpoint_data),
                 ]
                 if status == CheckpointStatus.COMMITTED
                 else []
             ),
             uncommitted_checkpoints=(
                 [
-                    make_checkpoint(file_num, checkpoint_data),
+                    _make_checkpoint(file_num, checkpoint_data),
                 ]
                 if status == CheckpointStatus.UNCOMMITTED
                 else []
@@ -790,7 +875,9 @@ class TestCheckpoint:
         checkpoint = Checkpoint.from_json(tmp_path / f"{file_num}.{status}")
 
         expected_checkpoint = (
-            make_checkpoint if status == CheckpointStatus.UNCOMMITTED else make_committed_checkpoint
+            _make_checkpoint
+            if status == CheckpointStatus.UNCOMMITTED
+            else _make_committed_checkpoint
         )(
             file_num,
             checkpoint_data,

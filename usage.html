@@ -1,0 +1,697 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Usage &mdash; bream  documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=e59714d7" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=5929fcd5"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="API documentation" href="api.html" />
+    <link rel="prev" title="bream documentation" href="index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            bream
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Usage</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#example-files-by-creation-timestamp">Example: Files by creation timestamp</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#setting-up-an-example-data-source">Setting up an example data source</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#wrapping-the-data-source-for-use-with-bream">Wrapping the data source for use with <code class="docutils literal notranslate"><span class="pre">bream</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#defining-the-stream-processing-function">Defining the stream processing function</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#setting-up-the-stream">Setting up the stream</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#starting-everything-up">Starting everything up</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#full-script">Full script</a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API documentation</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">bream</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Usage</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/usage.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="usage">
+<h1>Usage<a class="headerlink" href="#usage" title="Link to this heading"></a></h1>
+<section id="example-files-by-creation-timestamp">
+<h2>Example: Files by creation timestamp<a class="headerlink" href="#example-files-by-creation-timestamp" title="Link to this heading"></a></h2>
+<p>In this example, we’ll set up a <code class="docutils literal notranslate"><span class="pre">bream</span></code> stream that streams some numbers from files, in order of file
+creation time, to a processing function that computes and writes some basic stats.</p>
+<section id="setting-up-an-example-data-source">
+<h3>Setting up an example data source<a class="headerlink" href="#setting-up-an-example-data-source" title="Link to this heading"></a></h3>
+<p>For this example, let’s set up a simple data source. We’ll have a loop that populates a directory with randomly named files (e.g <code class="docutils literal notranslate"><span class="pre">gzhzm0gx50</span></code>)
+that contain some random positive integers, e.g:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="mi">26</span>
+<span class="mi">48</span>
+<span class="mi">27</span>
+<span class="mi">49</span>
+</pre></div>
+</div>
+<p>Let’s set up a function and script entrypoint to do this:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">random</span><span class="w"> </span><span class="kn">import</span> <span class="n">random</span><span class="p">,</span> <span class="n">randint</span><span class="p">,</span> <span class="n">choices</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sys</span><span class="w"> </span><span class="kn">import</span> <span class="n">argv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">sleep</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">file_creation_loop</span><span class="p">(</span><span class="n">testdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An example data source.</span>
+
+<span class="sd">    Every now and then, adds a randomly-named file to `test_dir` that contains</span>
+<span class="sd">    some numbers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">testdir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">max_seconds_between_file_creation</span> <span class="o">=</span> <span class="mi">24</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">sleep_time</span> <span class="o">=</span> <span class="n">random</span><span class="p">()</span><span class="o">*</span><span class="n">max_seconds_between_file_creation</span>
+        <span class="n">sleep</span><span class="p">(</span><span class="n">sleep_time</span><span class="p">)</span>
+        <span class="n">fname</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">choices</span><span class="p">(</span><span class="s2">&quot;abcdefghijklmnopqrstuvwxyz0123456789&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+        <span class="n">number_of_numbers</span> <span class="o">=</span> <span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+        <span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">50</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">number_of_numbers</span><span class="p">)]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing file: </span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="p">(</span><span class="n">testdir</span> <span class="o">/</span> <span class="nb">str</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">writelines</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span>
+
+        <span class="c1"># cleanup: keep only latest 250 files</span>
+        <span class="n">ps</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">testdir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_ctime</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ps</span><span class="p">[:</span><span class="o">-</span><span class="mi">500</span><span class="p">:]:</span>
+            <span class="n">p</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+
+    <span class="k">if</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;startsource&quot;</span><span class="p">:</span>
+        <span class="n">inputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">file_creation_loop</span><span class="p">(</span><span class="n">inputdir</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span>
+</pre></div>
+</div>
+<p>The source could now by started with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">&lt;</span><span class="n">pythonscript</span><span class="o">&gt;.</span><span class="n">py</span> <span class="n">startsource</span> <span class="o">&lt;</span><span class="n">where</span> <span class="n">to</span> <span class="n">put</span> <span class="n">the</span> <span class="n">files</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>But we have more to set up first.</p>
+</section>
+<section id="wrapping-the-data-source-for-use-with-bream">
+<h3>Wrapping the data source for use with <code class="docutils literal notranslate"><span class="pre">bream</span></code><a class="headerlink" href="#wrapping-the-data-source-for-use-with-bream" title="Link to this heading"></a></h3>
+<p>To use this data source with a bream stream, we first need to define a bream <a class="reference internal" href="core.html#bream.core.Source" title="bream.core.Source"><code class="xref py py-class docutils literal notranslate"><span class="pre">Source</span></code></a>
+for it. To do so, we inherit from <a class="reference internal" href="core.html#bream.core.Source" title="bream.core.Source"><code class="xref py py-class docutils literal notranslate"><span class="pre">Source</span></code></a> and define the name and <code class="docutils literal notranslate"><span class="pre">read</span></code> method
+that loads the files and emits the numbers:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">suppress</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">bream.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Source</span><span class="p">,</span> <span class="n">BatchRequest</span><span class="p">,</span> <span class="n">Batch</span>
+
+<span class="o">...</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">NumbersFromFilesByCreationTimestampSource</span><span class="p">(</span><span class="n">Source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Bream wrapper for a directory of files containing numbers. The data will</span>
+<span class="sd">    be emitted in order of file creation timestamp. The file creation timestamp in</span>
+<span class="sd">    POSIX timestamp form is used as the stream &quot;offset&quot;.</span>
+
+<span class="sd">    For this example, it will be be pointed at a directory populated by</span>
+<span class="sd">    `file_creation_loop`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sourcename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">filedir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">num_files_per_batch</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the bream data source.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            sourcename: the name of the source - used by bream to identify the source</span>
+<span class="sd">            filedir: path to the dir containing files of numbers</span>
+<span class="sd">            num_files_per_batch: the maximum number of files that should be read in each batch</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># the name of the source - used by bream to identify the source:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">sourcename</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_filedir</span> <span class="o">=</span> <span class="n">filedir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_files_per_batch</span> <span class="o">=</span> <span class="n">num_files_per_batch</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_timestamp_to_file_map</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get a map of file-creation timestamps to file path for each file in the dir.&quot;&quot;&quot;</span>
+        <span class="n">files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_filedir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">))</span>
+        <span class="n">res</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">suppress</span><span class="p">(</span><span class="ne">FileNotFoundError</span><span class="p">):</span>  <span class="c1"># avoid cleanup race-condition of file_creation_loop</span>
+                <span class="n">res</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_ctime</span><span class="o">*</span><span class="mi">1000</span><span class="p">)]</span> <span class="o">=</span> <span class="n">f</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">br</span><span class="p">:</span> <span class="n">BatchRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Batch</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Read a batch of number-lists from the directory.</span>
+
+<span class="sd">        The data will be read to a map with a key-value pair for each file read in this batch:</span>
+<span class="sd">            {&lt;filename&gt;: [&lt;numbers&gt;, ...], ...}</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            br: The batch request. This is a bream construct that is</span>
+<span class="sd">                part of the bream source protocol that looks like:</span>
+<span class="sd">                BreamRequest(read_from_after: int | None, read_to: int | None) where:</span>
+<span class="sd">                    `read_from_after` is an offset such that we should start</span>
+<span class="sd">                    from the next available one (or None if we should start from the</span>
+<span class="sd">                    beginning)</span>
+<span class="sd">                    `read_to` is the offset we should read to (or None if the source</span>
+<span class="sd">                    gets to choose where to read to).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            batch: The batch we return. `Batch` is another bream construct that is part</span>
+<span class="sd">                of the bream source protocol and looks like:</span>
+<span class="sd">                Batch(data: Any, read_to: int) where:</span>
+<span class="sd">                    `data` is the batch data</span>
+<span class="sd">                    `read_to` is the offset we actually read to.</span>
+<span class="sd">                If there is no data available, this should be None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># if there are no files, we can&#39;t read any data:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">timestamp_to_file_map</span> <span class="o">:=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_timestamp_to_file_map</span><span class="p">()):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># get the timestamps in sorted order</span>
+        <span class="n">timestamps</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">timestamp_to_file_map</span><span class="p">)</span>
+
+        <span class="c1"># read from the next timestamp if a &#39;read_from_after&#39; is given, otherwise start at beginnig</span>
+        <span class="n">read_from_idx</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">timestamps</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">br</span><span class="o">.</span><span class="n">read_from_after</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">br</span><span class="o">.</span><span class="n">read_from_after</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="p">)</span>
+
+        <span class="c1"># if there are no more files to read, we won&#39;t ready any data</span>
+        <span class="k">if</span> <span class="n">read_from_idx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">br</span><span class="o">.</span><span class="n">read_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># if told where to read to, respect it</span>
+            <span class="n">read_to_idx</span> <span class="o">=</span> <span class="n">timestamps</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">br</span><span class="o">.</span><span class="n">read_to</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># otherwise read as many files as configured to</span>
+            <span class="n">read_to_idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">read_from_idx</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_files_per_batch</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># get the actual timestamps of files we should read</span>
+        <span class="n">timestamps_of_files_to_read</span> <span class="o">=</span>  <span class="n">timestamps</span><span class="p">[</span><span class="n">read_from_idx</span><span class="p">:</span><span class="n">read_to_idx</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># get the file paths we need to read</span>
+        <span class="n">files_to_read</span> <span class="o">=</span> <span class="p">[</span><span class="n">timestamp_to_file_map</span><span class="p">[</span><span class="n">ts</span><span class="p">]</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">timestamps_of_files_to_read</span><span class="p">]</span>
+
+        <span class="c1"># get the data from the files</span>
+        <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">files_to_read</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">cleaned</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span><span class="p">]</span>
+            <span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">cleaned</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">nums</span>
+
+        <span class="k">return</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">read_to</span><span class="o">=</span><span class="n">timestamps_of_files_to_read</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+<span class="o">...</span>
+</pre></div>
+</div>
+</section>
+<section id="defining-the-stream-processing-function">
+<h3>Defining the stream processing function<a class="headerlink" href="#defining-the-stream-processing-function" title="Link to this heading"></a></h3>
+<p>Now we have a bream source set up, but before we configure a stream, we’ll want do something with the data
+emitted by the source. So let’s define a “batch function” that consumes the numbers loaded from each file and writes
+some basic stats:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">random</span><span class="w"> </span><span class="kn">import</span> <span class="n">random</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statistics</span><span class="w"> </span><span class="kn">import</span> <span class="n">mean</span><span class="p">,</span> <span class="n">stdev</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">bream.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Batch</span>
+
+<span class="o">...</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">write_stats</span><span class="p">(</span><span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">,</span> <span class="n">output_file</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Example batch function that takes data from NumbersFromFilesByCreationTimestampSource.</span>
+
+<span class="sd">    This will be given to the bream `Stream` object as the batch processing function and</span>
+<span class="sd">    computes some basic stats for each list of numbers read from the files.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        batches: A bream construct that looks like</span>
+<span class="sd">            Batches(batches: dict[str, Batch | None] = {&lt;source name&gt;: Batch(...), ...}) where</span>
+<span class="sd">            `batches` is a map of source name to Batch object. In this example there will be only</span>
+<span class="sd">            one key-value pair, but in general there will be one for each source of the stream.</span>
+<span class="sd">        output_file: Path to file we should write the output stats too.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">output_file</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># get and report batch of numbers:</span>
+    <span class="k">assert</span> <span class="n">batch</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Seen batch: </span><span class="si">{</span><span class="n">batch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">nums</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">data</span>
+    <span class="c1"># as per the source, the data is a map of the form {&lt;filename&gt;: [&lt;numbers&gt;, ...], ...}</span>
+
+    <span class="c1"># make the function flaky:</span>
+    <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;raising error on batch: </span><span class="si">{</span><span class="n">batch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># process the batch and write output</span>
+    <span class="k">with</span> <span class="n">output_file</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">numlist</span> <span class="ow">in</span> <span class="n">nums</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+            <span class="c1"># compute stats:</span>
+            <span class="n">mean_</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">mean</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span>
+            <span class="n">stdev_</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="n">stdev</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span>
+            <span class="n">stats</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">),</span> <span class="n">mean_</span><span class="p">,</span> <span class="n">stdev_</span><span class="p">]</span>
+
+            <span class="c1"># write stats:</span>
+            <span class="n">stats_writable</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">numlist</span><span class="si">}</span><span class="s2"> -&gt; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(count=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, mean=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">, stdev=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">)</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">stats_writable</span><span class="p">)</span>
+
+<span class="o">...</span>
+</pre></div>
+</div>
+</section>
+<section id="setting-up-the-stream">
+<h3>Setting up the stream<a class="headerlink" href="#setting-up-the-stream" title="Link to this heading"></a></h3>
+<p>Now we’re read to set up and start the stream. Let’s add a function and another entrypoint to our script:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sys</span><span class="w"> </span><span class="kn">import</span> <span class="n">argv</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">bream.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Stream</span>
+
+<span class="o">...</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">start_stream</span><span class="p">(</span><span class="n">input_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">output_file</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">stream_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Start the stream for the example..</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        input_dir: path to dir of files to point NumbersFromFilesByCreationTimestampSource at</span>
+<span class="sd">        output_file: path to file where batch function should write stats to</span>
+<span class="sd">        stream_dir: path to dir where stream will track its progress</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># define the source:</span>
+    <span class="n">source_name</span> <span class="o">=</span> <span class="s2">&quot;some_numbers&quot;</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">NumbersFromFilesByCreationTimestampSource</span><span class="p">(</span>
+        <span class="n">source_name</span><span class="p">,</span> <span class="n">input_dir</span><span class="p">,</span> <span class="n">num_files_per_batch</span><span class="o">=</span><span class="mi">3</span>
+    <span class="p">)</span>
+
+    <span class="c1"># define the batch function:</span>
+    <span class="n">batch_func</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">write_stats</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="n">output_file</span><span class="p">)</span>
+
+    <span class="c1"># define and start the stream: batch function is flaky so wrap it in a restart-loop:</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">Stream</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">stream_dir</span><span class="p">)</span>
+        <span class="c1"># start stream in background thread, and don&#39;t read batches more often than 30 secs</span>
+        <span class="n">stream</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">batch_func</span><span class="p">,</span> <span class="n">min_batch_seconds</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+        <span class="n">stream</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>  <span class="c1"># block until stream dies</span>
+        <span class="k">if</span> <span class="n">stream</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>  <span class="c1"># stream died which means an error happened, check status</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;error raised: </span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="n">stream</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">error</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="o">...</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+
+    <span class="k">if</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;startsource&quot;</span><span class="p">:</span>
+        <span class="n">inputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">file_creation_loop</span><span class="p">(</span><span class="n">inputdir</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;startstream&quot;</span><span class="p">:</span>
+        <span class="n">inputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">outputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+        <span class="n">streamdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span>
+        <span class="n">start_stream</span><span class="p">(</span><span class="n">inputdir</span><span class="p">,</span> <span class="n">outputdir</span><span class="p">,</span> <span class="n">streamdir</span><span class="p">)</span>
+
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span>
+</pre></div>
+</div>
+</section>
+<section id="starting-everything-up">
+<h3>Starting everything up<a class="headerlink" href="#starting-everything-up" title="Link to this heading"></a></h3>
+<p>Now we’re ready to start the data source and the stream. We can start the source with in one process with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">&lt;</span><span class="n">pythonscript</span><span class="o">&gt;.</span><span class="n">py</span> <span class="n">startsource</span> <span class="o">&lt;</span><span class="n">where</span> <span class="n">to</span> <span class="n">put</span> <span class="n">the</span> <span class="n">files</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>which should produce an output that looks something like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">weyec11rft</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="mi">6</span><span class="n">z17vodynr</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">gzhzm0gx50</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="mi">0</span><span class="n">lar0xijkl</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="mi">0</span><span class="n">qznxuy93c</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">nt64iet8r7</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">n947n4c2lg</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="mi">6419</span><span class="n">nm4txf</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">dvilu31ftl</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="mi">833</span><span class="n">hp14faa</span><span class="o">...</span>
+<span class="n">Writing</span> <span class="n">file</span><span class="p">:</span> <span class="n">evy33h4glw</span><span class="o">...</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>We can start the stream with:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">python</span> <span class="o">&lt;</span><span class="n">pythonscript</span><span class="o">&gt;.</span><span class="n">py</span> <span class="n">startstream</span> <span class="o">&lt;</span><span class="nb">input</span> <span class="nb">dir</span><span class="p">,</span> <span class="n">same</span> <span class="k">as</span> <span class="n">where</span> <span class="n">to</span> <span class="n">put</span> <span class="n">files</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="n">output</span> <span class="n">file</span><span class="o">&gt;</span> <span class="o">&lt;</span><span class="n">stream</span> <span class="n">tracking</span> <span class="nb">dir</span><span class="o">&gt;</span>
+</pre></div>
+</div>
+<p>which should produce an output that looks something like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;weyec11rft&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">14</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">28</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745697964833</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;6z17vodynr&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">30</span><span class="p">],</span> <span class="s1">&#39;gzhzm0gx50&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">35</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="s1">&#39;0lar0xijkl&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">38</span><span class="p">,</span> <span class="mi">15</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745697995425</span><span class="p">)</span>
+<span class="n">error</span> <span class="n">raised</span><span class="p">:</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;raising error on batch: Batch(data={&#39;6z17vodynr&#39;: [30], &#39;gzhzm0gx50&#39;: [35, 2, 6], &#39;0lar0xijkl&#39;: [38, 15]}, read_to=1745697995425)&quot;</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;6z17vodynr&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">30</span><span class="p">],</span> <span class="s1">&#39;gzhzm0gx50&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">35</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">],</span> <span class="s1">&#39;0lar0xijkl&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">38</span><span class="p">,</span> <span class="mi">15</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745697995425</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;0qznxuy93c&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">34</span><span class="p">],</span> <span class="s1">&#39;nt64iet8r7&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">40</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745698027377</span><span class="p">)</span>
+<span class="n">error</span> <span class="n">raised</span><span class="p">:</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="s2">&quot;raising error on batch: Batch(data={&#39;0qznxuy93c&#39;: [34], &#39;nt64iet8r7&#39;: [10, 28, 40]}, read_to=1745698027377)&quot;</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;0qznxuy93c&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">34</span><span class="p">],</span> <span class="s1">&#39;nt64iet8r7&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">40</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745698027377</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;n947n4c2lg&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">9</span><span class="p">],</span> <span class="s1">&#39;6419nm4txf&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">32</span><span class="p">],</span> <span class="s1">&#39;dvilu31ftl&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">31</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">39</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">28</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745698052553</span><span class="p">)</span>
+<span class="n">Seen</span> <span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="p">{</span><span class="s1">&#39;833hp14faa&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">49</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">35</span><span class="p">],</span> <span class="s1">&#39;evy33h4glw&#39;</span><span class="p">:</span> <span class="p">[</span><span class="mi">34</span><span class="p">,</span> <span class="mi">39</span><span class="p">]},</span> <span class="n">read_to</span><span class="o">=</span><span class="mi">1745698087422</span><span class="p">)</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>Looking in the <code class="docutils literal notranslate"><span class="pre">&lt;output</span> <span class="pre">file&gt;</span></code> we should see the basic stats like:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">weyec11rft</span><span class="p">:</span> <span class="p">[</span><span class="mi">14</span><span class="p">,</span> <span class="mi">9</span><span class="p">,</span> <span class="mi">28</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mi">17</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">9.848857801796104</span><span class="p">)</span>
+<span class="mi">6</span><span class="n">z17vodynr</span><span class="p">:</span> <span class="p">[</span><span class="mi">30</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mi">30</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">gzhzm0gx50</span><span class="p">:</span> <span class="p">[</span><span class="mi">35</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">6</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">14.333333333333334</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">18.009256878986797</span><span class="p">)</span>
+<span class="mi">0</span><span class="n">lar0xijkl</span><span class="p">:</span> <span class="p">[</span><span class="mi">38</span><span class="p">,</span> <span class="mi">15</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">26.5</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">16.263455967290593</span><span class="p">)</span>
+<span class="mi">0</span><span class="n">qznxuy93c</span><span class="p">:</span> <span class="p">[</span><span class="mi">34</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mi">34</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="n">nt64iet8r7</span><span class="p">:</span> <span class="p">[</span><span class="mi">10</span><span class="p">,</span> <span class="mi">28</span><span class="p">,</span> <span class="mi">40</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mi">26</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">15.0996688705415</span><span class="p">)</span>
+<span class="n">n947n4c2lg</span><span class="p">:</span> <span class="p">[</span><span class="mi">9</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mi">9</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mi">0</span><span class="p">)</span>
+<span class="mi">6419</span><span class="n">nm4txf</span><span class="p">:</span> <span class="p">[</span><span class="mi">6</span><span class="p">,</span> <span class="mi">11</span><span class="p">,</span> <span class="mi">25</span><span class="p">,</span> <span class="mi">0</span><span class="p">,</span> <span class="mi">32</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">14.8</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">13.330416347586446</span><span class="p">)</span>
+<span class="n">dvilu31ftl</span><span class="p">:</span> <span class="p">[</span><span class="mi">31</span><span class="p">,</span> <span class="mi">42</span><span class="p">,</span> <span class="mi">39</span><span class="p">,</span> <span class="mi">35</span><span class="p">,</span> <span class="mi">19</span><span class="p">,</span> <span class="mi">28</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">6</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">32.333333333333336</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">8.286535263104035</span><span class="p">)</span>
+<span class="mi">833</span><span class="n">hp14faa</span><span class="p">:</span> <span class="p">[</span><span class="mi">49</span><span class="p">,</span> <span class="mi">24</span><span class="p">,</span> <span class="mi">17</span><span class="p">,</span> <span class="mi">12</span><span class="p">,</span> <span class="mi">35</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">27.4</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">14.842506526863986</span><span class="p">)</span>
+<span class="n">evy33h4glw</span><span class="p">:</span> <span class="p">[</span><span class="mi">34</span><span class="p">,</span> <span class="mi">39</span><span class="p">]</span> <span class="o">-&gt;</span> <span class="p">(</span><span class="n">count</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span> <span class="n">mean</span><span class="o">=</span><span class="mf">36.5</span><span class="p">,</span> <span class="n">stdev</span><span class="o">=</span><span class="mf">3.5355339059327378</span><span class="p">)</span>
+<span class="o">...</span>
+</pre></div>
+</div>
+<p>and looking in the <code class="docutils literal notranslate"><span class="pre">&lt;stream</span> <span class="pre">tracking</span> <span class="pre">dir&gt;</span></code> we should see the most recent checkpoint files as the stream
+tracks its progress along the data source.</p>
+</section>
+<section id="full-script">
+<h3>Full script<a class="headerlink" href="#full-script" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="c1"># filesbytimestamp.py</span>
+<span class="sd">&quot;&quot;&quot;</span>
+<span class="sd">A demonstration of how to use `bream`. This example sets up a simple data source</span>
+<span class="sd">that writes small files (with random names) of numbers to a directory, and a bream Stream</span>
+<span class="sd">that streams these lists of numbers into a batch function that coomputes and writes</span>
+<span class="sd">basic stats.</span>
+
+<span class="sd">The source can be started with</span>
+<span class="sd">&gt;&gt; python filesbytimestamp.py startsource &lt;directory to put number files&gt;</span>
+
+<span class="sd">The stream can be started in a separate process with</span>
+<span class="sd">&gt;&gt; python filesbytimestamp.py startstream &lt;input dir, same as where to put files&gt; &lt;output file&gt; &lt;stream tracking dir&gt;  # noqa: E501</span>
+<span class="sd">&quot;&quot;&quot;</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">__future__</span><span class="w"> </span><span class="kn">import</span> <span class="n">annotations</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">random</span><span class="w"> </span><span class="kn">import</span> <span class="n">random</span><span class="p">,</span> <span class="n">randint</span><span class="p">,</span> <span class="n">choices</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">functools</span><span class="w"> </span><span class="kn">import</span> <span class="n">partial</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">sys</span><span class="w"> </span><span class="kn">import</span> <span class="n">argv</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">time</span><span class="w"> </span><span class="kn">import</span> <span class="n">sleep</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">statistics</span><span class="w"> </span><span class="kn">import</span> <span class="n">mean</span><span class="p">,</span> <span class="n">stdev</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">contextlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">suppress</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">bream.core</span><span class="w"> </span><span class="kn">import</span> <span class="n">Source</span><span class="p">,</span> <span class="n">BatchRequest</span><span class="p">,</span> <span class="n">Batch</span><span class="p">,</span> <span class="n">Stream</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">file_creation_loop</span><span class="p">(</span><span class="n">testdir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;An example data source.</span>
+
+<span class="sd">    Every now and then, adds a randomly-named file to `test_dir` that contains</span>
+<span class="sd">    some numbers.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">testdir</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="n">max_seconds_between_file_creation</span> <span class="o">=</span> <span class="mi">24</span>
+
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">sleep_time</span> <span class="o">=</span> <span class="n">random</span><span class="p">()</span><span class="o">*</span><span class="n">max_seconds_between_file_creation</span>
+        <span class="n">sleep</span><span class="p">(</span><span class="n">sleep_time</span><span class="p">)</span>
+        <span class="n">fname</span> <span class="o">=</span> <span class="s2">&quot;&quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">choices</span><span class="p">(</span><span class="s2">&quot;abcdefghijklmnopqrstuvwxyz0123456789&quot;</span><span class="p">,</span> <span class="n">k</span><span class="o">=</span><span class="mi">10</span><span class="p">))</span>
+        <span class="n">number_of_numbers</span> <span class="o">=</span> <span class="n">randint</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">6</span><span class="p">)</span>
+        <span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">randint</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span><span class="w"> </span><span class="mi">50</span><span class="p">)</span><span class="si">}</span><span class="se">\n</span><span class="s2">&quot;</span> <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">number_of_numbers</span><span class="p">)]</span>
+        <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Writing file: </span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s2">...&quot;</span><span class="p">)</span>
+        <span class="k">with</span> <span class="p">(</span><span class="n">testdir</span> <span class="o">/</span> <span class="nb">str</span><span class="p">(</span><span class="n">fname</span><span class="p">))</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">writelines</span><span class="p">(</span><span class="n">nums</span><span class="p">)</span>
+
+        <span class="c1"># cleanup: keep only latest 250 files</span>
+        <span class="n">ps</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">testdir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">),</span> <span class="n">key</span><span class="o">=</span><span class="p">(</span><span class="k">lambda</span> <span class="n">p</span><span class="p">:</span> <span class="n">p</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_ctime</span><span class="p">))</span>
+        <span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="n">ps</span><span class="p">[:</span><span class="o">-</span><span class="mi">500</span><span class="p">:]:</span>
+            <span class="n">p</span><span class="o">.</span><span class="n">unlink</span><span class="p">()</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">NumbersFromFilesByCreationTimestampSource</span><span class="p">(</span><span class="n">Source</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Bream wrapper for a directory of files containing numbers. The data will</span>
+<span class="sd">    be emitted in order of file creation timestamp. The file creation timestamp in</span>
+<span class="sd">    POSIX timestamp form is used as the stream &quot;offset&quot;.</span>
+
+<span class="sd">    For this example, it will be be pointed at a directory populated by</span>
+<span class="sd">    `file_creation_loop`.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">sourcename</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">filedir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">num_files_per_batch</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Initialize the bream data source.</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            sourcename: the name of the source - used by bream to identify the source</span>
+<span class="sd">            filedir: path to the dir containing files of numbers</span>
+<span class="sd">            num_files_per_batch: the maximum number of files that should be read in each batch</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="c1"># the name of the source - used by bream to identify the source:</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">name</span> <span class="o">=</span> <span class="n">sourcename</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_filedir</span> <span class="o">=</span> <span class="n">filedir</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_num_files_per_batch</span> <span class="o">=</span> <span class="n">num_files_per_batch</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_get_timestamp_to_file_map</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Get a map of file-creation timestamps to file path for each file in the dir.&quot;&quot;&quot;</span>
+        <span class="n">files</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_filedir</span><span class="o">.</span><span class="n">glob</span><span class="p">(</span><span class="s2">&quot;*&quot;</span><span class="p">))</span>
+        <span class="n">res</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">int</span><span class="p">,</span> <span class="n">Path</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">files</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">suppress</span><span class="p">(</span><span class="ne">FileNotFoundError</span><span class="p">):</span>  <span class="c1"># avoid cleanup race-condition of file_creation_loop</span>
+                <span class="n">res</span><span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">f</span><span class="o">.</span><span class="n">stat</span><span class="p">()</span><span class="o">.</span><span class="n">st_ctime</span><span class="o">*</span><span class="mi">1000</span><span class="p">)]</span> <span class="o">=</span> <span class="n">f</span>
+        <span class="k">return</span> <span class="n">res</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">br</span><span class="p">:</span> <span class="n">BatchRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Batch</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Read a batch of number-lists from the directory.</span>
+
+<span class="sd">        The data will be read to a map with a key-value pair for each file read in this batch:</span>
+<span class="sd">            {&lt;filename&gt;: [&lt;numbers&gt;, ...], ...}</span>
+
+<span class="sd">        Args:</span>
+<span class="sd">            br: The batch request. This is a bream construct that is</span>
+<span class="sd">                part of the bream source protocol that looks like:</span>
+<span class="sd">                BreamRequest(read_from_after: int | None, read_to: int | None) where:</span>
+<span class="sd">                    `read_from_after` is an offset such that we should start</span>
+<span class="sd">                    from the next available one (or None if we should start from the</span>
+<span class="sd">                    beginning)</span>
+<span class="sd">                    `read_to` is the offset we should read to (or None if the source</span>
+<span class="sd">                    gets to choose where to read to).</span>
+
+<span class="sd">        Returns:</span>
+<span class="sd">            batch: The batch we return. `Batch` is another bream construct that is part</span>
+<span class="sd">                of the bream source protocol and looks like:</span>
+<span class="sd">                Batch(data: Any, read_to: int) where:</span>
+<span class="sd">                    `data` is the batch data</span>
+<span class="sd">                    `read_to` is the offset we actually read to.</span>
+<span class="sd">                If there is no data available, this should be None.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+
+        <span class="c1"># if there are no files, we can&#39;t read any data:</span>
+        <span class="k">if</span> <span class="ow">not</span> <span class="p">(</span><span class="n">timestamp_to_file_map</span> <span class="o">:=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_get_timestamp_to_file_map</span><span class="p">()):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="c1"># get the timestamps in sorted order</span>
+        <span class="n">timestamps</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">timestamp_to_file_map</span><span class="p">)</span>
+
+        <span class="c1"># read from the next timestamp if a &#39;read_from_after&#39; is given, otherwise start at beginnig</span>
+        <span class="n">read_from_idx</span> <span class="o">=</span> <span class="p">(</span>
+            <span class="p">(</span><span class="n">timestamps</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">br</span><span class="o">.</span><span class="n">read_from_after</span><span class="p">)</span> <span class="o">+</span> <span class="mi">1</span><span class="p">)</span> <span class="k">if</span> <span class="n">br</span><span class="o">.</span><span class="n">read_from_after</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mi">0</span>
+        <span class="p">)</span>
+
+        <span class="c1"># if there are no more files to read, we won&#39;t ready any data</span>
+        <span class="k">if</span> <span class="n">read_from_idx</span> <span class="o">==</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">):</span>
+            <span class="k">return</span> <span class="kc">None</span>
+
+        <span class="k">if</span> <span class="n">br</span><span class="o">.</span><span class="n">read_to</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="c1"># if told where to read to, respect it</span>
+            <span class="n">read_to_idx</span> <span class="o">=</span> <span class="n">timestamps</span><span class="o">.</span><span class="n">index</span><span class="p">(</span><span class="n">br</span><span class="o">.</span><span class="n">read_to</span><span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># otherwise read as many files as configured to</span>
+            <span class="n">read_to_idx</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">read_from_idx</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">_num_files_per_batch</span> <span class="o">-</span> <span class="mi">1</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">timestamps</span><span class="p">)</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
+
+        <span class="c1"># get the actual timestamps of files we should read</span>
+        <span class="n">timestamps_of_files_to_read</span> <span class="o">=</span>  <span class="n">timestamps</span><span class="p">[</span><span class="n">read_from_idx</span><span class="p">:</span><span class="n">read_to_idx</span><span class="o">+</span><span class="mi">1</span><span class="p">]</span>
+
+        <span class="c1"># get the file paths we need to read</span>
+        <span class="n">files_to_read</span> <span class="o">=</span> <span class="p">[</span><span class="n">timestamp_to_file_map</span><span class="p">[</span><span class="n">ts</span><span class="p">]</span> <span class="k">for</span> <span class="n">ts</span> <span class="ow">in</span> <span class="n">timestamps_of_files_to_read</span><span class="p">]</span>
+
+        <span class="c1"># get the data from the files</span>
+        <span class="n">data</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="p">{}</span>
+        <span class="k">for</span> <span class="n">path</span> <span class="ow">in</span> <span class="n">files_to_read</span><span class="p">:</span>
+            <span class="k">with</span> <span class="n">path</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+                <span class="n">cleaned</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">read</span><span class="p">()</span><span class="o">.</span><span class="n">strip</span><span class="p">()</span><span class="o">.</span><span class="n">split</span><span class="p">(</span><span class="s2">&quot;</span><span class="se">\n</span><span class="s2">&quot;</span><span class="p">)</span> <span class="k">if</span> <span class="n">x</span><span class="p">]</span>
+            <span class="n">nums</span> <span class="o">=</span> <span class="p">[</span><span class="nb">int</span><span class="p">(</span><span class="n">x</span><span class="p">)</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">cleaned</span><span class="p">]</span>
+            <span class="n">data</span><span class="p">[</span><span class="n">path</span><span class="o">.</span><span class="n">name</span><span class="p">]</span> <span class="o">=</span> <span class="n">nums</span>
+
+        <span class="k">return</span> <span class="n">Batch</span><span class="p">(</span><span class="n">data</span><span class="o">=</span><span class="n">data</span><span class="p">,</span> <span class="n">read_to</span><span class="o">=</span><span class="n">timestamps_of_files_to_read</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">])</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">write_stats</span><span class="p">(</span><span class="n">batch</span><span class="p">:</span> <span class="n">Batch</span><span class="p">,</span> <span class="n">output_file</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Example batch function that takes data from NumbersFromFilesByCreationTimestampSource.</span>
+
+<span class="sd">    This will be given to the bream `Stream` object as the batch processing function and</span>
+<span class="sd">    computes some basic stats for each list of numbers read from the files.</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        batches: A bream construct that looks like</span>
+<span class="sd">            Batches(batches: dict[str, Batch | None] = {&lt;source name&gt;: Batch(...), ...}) where</span>
+<span class="sd">            `batches` is a map of source name to Batch object. In this example there will be only</span>
+<span class="sd">            one key-value pair, but in general there will be one for each source of the stream.</span>
+<span class="sd">        output_file: Path to file we should write the output stats too.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">output_file</span><span class="o">.</span><span class="n">parent</span><span class="o">.</span><span class="n">mkdir</span><span class="p">(</span><span class="n">parents</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+
+    <span class="c1"># get and report batch of numbers:</span>
+    <span class="k">assert</span> <span class="n">batch</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span>
+    <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Seen batch: </span><span class="si">{</span><span class="n">batch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+    <span class="n">nums</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">list</span><span class="p">[</span><span class="nb">int</span><span class="p">]]</span> <span class="o">=</span> <span class="n">batch</span><span class="o">.</span><span class="n">data</span>
+    <span class="c1"># as per the source, the data is a map of the form {&lt;filename&gt;: [&lt;numbers&gt;, ...], ...}</span>
+
+    <span class="c1"># make the function flaky:</span>
+    <span class="k">if</span> <span class="n">random</span><span class="p">()</span> <span class="o">&lt;</span> <span class="mf">0.1</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">RuntimeError</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;raising error on batch: </span><span class="si">{</span><span class="n">batch</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+    <span class="c1"># process the batch and write output</span>
+    <span class="k">with</span> <span class="n">output_file</span><span class="o">.</span><span class="n">open</span><span class="p">(</span><span class="s2">&quot;a&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f</span><span class="p">:</span>
+        <span class="k">for</span> <span class="n">fname</span><span class="p">,</span> <span class="n">numlist</span> <span class="ow">in</span> <span class="n">nums</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+
+            <span class="c1"># compute stats:</span>
+            <span class="n">mean_</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">1</span> <span class="k">else</span> <span class="n">mean</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span>
+            <span class="n">stdev_</span> <span class="o">=</span> <span class="mi">0</span> <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mi">2</span> <span class="k">else</span> <span class="n">stdev</span><span class="p">(</span><span class="n">numlist</span><span class="p">)</span>
+            <span class="n">stats</span> <span class="o">=</span> <span class="p">[</span><span class="nb">len</span><span class="p">(</span><span class="n">numlist</span><span class="p">),</span> <span class="n">mean_</span><span class="p">,</span> <span class="n">stdev_</span><span class="p">]</span>
+
+            <span class="c1"># write stats:</span>
+            <span class="n">stats_writable</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">fname</span><span class="si">}</span><span class="s2">: </span><span class="si">{</span><span class="n">numlist</span><span class="si">}</span><span class="s2"> -&gt; &quot;</span>
+                <span class="sa">f</span><span class="s2">&quot;(count=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span><span class="si">}</span><span class="s2">, mean=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span><span class="si">}</span><span class="s2">, stdev=</span><span class="si">{</span><span class="n">stats</span><span class="p">[</span><span class="mi">2</span><span class="p">]</span><span class="si">}</span><span class="s2">)</span><span class="se">\n</span><span class="s2">&quot;</span>
+            <span class="p">)</span>
+            <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">stats_writable</span><span class="p">)</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">start_stream</span><span class="p">(</span><span class="n">input_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">output_file</span><span class="p">:</span> <span class="n">Path</span><span class="p">,</span> <span class="n">stream_dir</span><span class="p">:</span> <span class="n">Path</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Start the stream for the example..</span>
+
+<span class="sd">    Args:</span>
+<span class="sd">        input_dir: path to dir of files to point NumbersFromFilesByCreationTimestampSource at</span>
+<span class="sd">        output_file: path to file where batch function should write stats to</span>
+<span class="sd">        stream_dir: path to dir where stream will track its progress</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="c1"># define the source:</span>
+    <span class="n">source_name</span> <span class="o">=</span> <span class="s2">&quot;some_numbers&quot;</span>
+    <span class="n">source</span> <span class="o">=</span> <span class="n">NumbersFromFilesByCreationTimestampSource</span><span class="p">(</span>
+        <span class="n">source_name</span><span class="p">,</span> <span class="n">input_dir</span><span class="p">,</span> <span class="n">num_files_per_batch</span><span class="o">=</span><span class="mi">3</span>
+    <span class="p">)</span>
+
+    <span class="c1"># define the batch function:</span>
+    <span class="n">batch_func</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">write_stats</span><span class="p">,</span> <span class="n">output_file</span><span class="o">=</span><span class="n">output_file</span><span class="p">)</span>
+
+    <span class="c1"># define and start the stream: batch function is flaky so wrap it in a restart-loop:</span>
+    <span class="k">while</span> <span class="kc">True</span><span class="p">:</span>
+        <span class="n">stream</span> <span class="o">=</span> <span class="n">Stream</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">stream_dir</span><span class="p">)</span>
+        <span class="c1"># start stream in background thread, and don&#39;t read batches more often than 30 secs</span>
+        <span class="n">stream</span><span class="o">.</span><span class="n">start</span><span class="p">(</span><span class="n">batch_func</span><span class="p">,</span> <span class="n">min_batch_seconds</span><span class="o">=</span><span class="mi">30</span><span class="p">)</span>
+        <span class="n">stream</span><span class="o">.</span><span class="n">wait</span><span class="p">()</span>  <span class="c1"># block until stream dies</span>
+        <span class="k">if</span> <span class="n">stream</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">error</span><span class="p">:</span>  <span class="c1"># stream died which means an error happened, check status</span>
+            <span class="nb">print</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;error raised: </span><span class="si">{</span><span class="nb">repr</span><span class="p">(</span><span class="n">stream</span><span class="o">.</span><span class="n">status</span><span class="o">.</span><span class="n">error</span><span class="p">)</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="k">if</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;startsource&quot;</span><span class="p">:</span>
+        <span class="n">inputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">file_creation_loop</span><span class="p">(</span><span class="n">inputdir</span><span class="p">)</span>
+    <span class="k">elif</span> <span class="n">argv</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">==</span> <span class="s2">&quot;startstream&quot;</span><span class="p">:</span>
+        <span class="n">inputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">2</span><span class="p">])</span>
+        <span class="n">outputdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">3</span><span class="p">])</span>
+        <span class="n">streamdir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="n">argv</span><span class="p">[</span><span class="mi">4</span><span class="p">])</span>
+        <span class="n">start_stream</span><span class="p">(</span><span class="n">inputdir</span><span class="p">,</span> <span class="n">outputdir</span><span class="p">,</span> <span class="n">streamdir</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="k">raise</span> <span class="ne">ValueError</span>
+</pre></div>
+</div>
+</section>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="index.html" class="btn btn-neutral float-left" title="bream documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="api.html" class="btn btn-neutral float-right" title="API documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2025, Adam Callison.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

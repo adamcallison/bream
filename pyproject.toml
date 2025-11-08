@@ -5,7 +5,7 @@ description = "Stream batches of data from arbitrary sources."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "cloudpathlib>=0.21.0",
+    "cloudpathlib>=0.20.0",
     "typing-extensions>=4",
 ]
 
